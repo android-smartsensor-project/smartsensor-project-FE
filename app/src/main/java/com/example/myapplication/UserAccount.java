@@ -6,10 +6,11 @@ public class UserAccount {
 
     // 2) 저장할 필드 선언 (private 권장)
     private String idToken;
-    private String emailId;
+    private String email;
     private String password;
     private String name;
     private String phone;
+    private String birth;
 
     // 3) 필드별 getter / setter
     public String getIdToken() {
@@ -20,10 +21,11 @@ public class UserAccount {
     }
 
     public String getEmailId() {
-        return emailId;
+        return email;
     }
-    public void setEmailId(String emailId) {
-        this.emailId = emailId;
+
+    public void setEmailId(String email) {
+        this.email = email;
     }
 
     public String getPassword() {
@@ -45,5 +47,11 @@ public class UserAccount {
     }
     public void setPhone(String phone) {
         this.phone = phone;
+    }
+    public String getBirth() {
+        return birth;
+    }
+    public void setBirth(String birth) {
+        this.birth = birth;
     }
 }
