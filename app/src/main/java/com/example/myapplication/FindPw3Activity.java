@@ -14,7 +14,7 @@ public class FindPw3Activity extends AppCompatActivity {
 
     private TextInputEditText editTextPassword;
     private TextInputEditText editTextConfirmPassword;
-    private Button buttonFindPassword;
+    private Button buttonPasswordReset;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -23,10 +23,10 @@ public class FindPw3Activity extends AppCompatActivity {
 
         editTextPassword = findViewById(R.id.editTextPassword);
         editTextConfirmPassword = findViewById(R.id.editTextConfirmPassword);
-        buttonFindPassword = findViewById(R.id.buttonFindPassword);
+        buttonPasswordReset = findViewById(R.id.buttonPasswordReset);
 
-        if (buttonFindPassword != null) {
-            buttonFindPassword.setOnClickListener(new View.OnClickListener() {
+        if (buttonPasswordReset != null) {
+            buttonPasswordReset.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
                     String newPassword = editTextPassword.getText().toString();

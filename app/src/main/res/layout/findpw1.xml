@@ -13,7 +13,7 @@
         android:orientation="vertical"
         android:gravity="center_horizontal"
         android:padding="24dp"
-        tools:context=".FindPwActivity">
+        tools:context=".FindPw1Activity">
 
         <TextView
             android:layout_width="wrap_content"
@@ -43,7 +43,7 @@
             style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
 
             <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/editTextUseremailFindPw"
+                android:id="@+id/editTextUseremailFindPassword"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:hint="이메일"
@@ -53,7 +53,7 @@
         </com.google.android.material.textfield.TextInputLayout>
 
         <Button
-            android:id="@+id/buttonFindPassword"
+            android:id="@+id/buttonEmailRequest"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="32dp"

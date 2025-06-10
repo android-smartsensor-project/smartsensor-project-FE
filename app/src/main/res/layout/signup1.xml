@@ -13,25 +13,25 @@
         android:orientation="vertical"
         android:gravity="center_horizontal"
         android:padding="24dp"
-        tools:context=".mainActivity">
+        tools:context=".SignUp1Activity">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="32dp"
-            android:text="비밀번호 찾기"
+            android:text="회원가입"
+            android:textColor="@android:color/black"
             android:textSize="36sp"
-            android:textStyle="bold"
-            android:textColor="@android:color/black"/>
+            android:textStyle="bold" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="재설정할 비밀번호를 입력해주세요"
-            android:textSize="14sp"
+            android:gravity="center"
+            android:text="사용하실 이메일을 입력해주세요."
             android:textColor="@android:color/black"
-            android:gravity="center"/>
+            android:textSize="14sp" />
 
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
@@ -39,47 +39,28 @@
             android:layout_marginTop="48dp"
             app:hintEnabled="true"
             app:hintAnimationEnabled="true"
-            app:passwordToggleEnabled="true"
             app:boxBackgroundMode="outline"
             style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
 
             <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/editTextPassword"
+                android:id="@+id/editTextUseremailFindSignUp"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="비밀번호"
-                android:inputType="textPassword"/>
-
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <com.google.android.material.textfield.TextInputLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            app:hintEnabled="true"
-            app:hintAnimationEnabled="true"
-            app:passwordToggleEnabled="true"
-            app:boxBackgroundMode="outline"
-            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/editTextConfirmPassword"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="비밀번호 확인"
-                android:inputType="textPassword"/>
+                android:hint="이메일"
+                android:inputType="textPersonName"
+                android:minHeight="48dp"/>
 
         </com.google.android.material.textfield.TextInputLayout>
 
         <Button
-            android:id="@+id/buttonPasswordReset"
+            android:id="@+id/buttonEmailRequest"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="32dp"
-            android:text="비밀번호 재설정"
-            android:textSize="18sp"
             android:backgroundTint="#FFEB3B"
-            android:textColor="@android:color/black"/>
+            android:text="이메일 인증 요청"
+            android:textColor="@android:color/black"
+            android:textSize="18sp" />
 
     </LinearLayout>
 

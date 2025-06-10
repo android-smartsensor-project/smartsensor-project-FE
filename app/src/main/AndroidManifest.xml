@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION"/>
 
     <application
@@ -14,9 +14,10 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.MyApplication"
-        tools:targetApi="31">
+        tools:targetApi="31"
+        android:usesCleartextTraffic="true">
         <activity
-            android:name=".MainActivity"
+            android:name=".LoginActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -24,10 +25,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".MainActivity" android:exported="false"/>
         <activity android:name=".FindPw1Activity" android:exported="false"/>
         <activity android:name=".FindPw2Activity" android:exported="false"/>
         <activity android:name=".FindPw3Activity" android:exported="false"/>
-        <activity android:name=".SignUpActivity" android:exported="false"/>
+        <activity android:name=".SignUp1Activity" android:exported="false"/>
+        <activity android:name=".SignUp2Activity" android:exported="false"/>
+        <activity android:name=".SignUp3Activity" android:exported="false"/>
         <activity android:name=".FrontActivity" android:exported="false"/>
     </application>
 
