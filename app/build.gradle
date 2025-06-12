@@ -36,6 +36,8 @@ dependencies {
     implementation libs.activity
     implementation libs.constraintlayout
     implementation libs.firebase.auth
+    implementation libs.play.services.maps
+    implementation libs.play.services.location
     testImplementation libs.junit
     androidTestImplementation libs.ext.junit
     androidTestImplementation libs.espresso.core
@@ -43,4 +45,5 @@ dependencies {
     implementation platform('com.google.firebase:firebase-bom:32.8.0')
     implementation 'com.google.firebase:firebase-analytics'
     implementation 'com.google.firebase:firebase-database'
+    implementation 'com.naver.maps:map-sdk:3.21.0'
 }
