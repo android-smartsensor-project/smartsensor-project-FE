@@ -14,23 +14,6 @@
         android:padding="16dp"
         android:background="@android:color/white">
 
-        <Button
-            android:id="@+id/buttonChangeMap"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_alignParentBottom="true"
-            android:layout_centerHorizontal="true"
-            android:layout_marginBottom="8dp"
-            android:text="지도 바꾸기"/>
-
-        <androidx.fragment.app.FragmentContainerView
-            android:id="@+id/map_container"
-            android:layout_width="match_parent"
-            android:layout_height="300dp"
-            android:layout_above="@+id/buttonChangeMap"
-            android:layout_marginTop="16dp"
-            tools:layout="@layout/front" />
-
         <TextView
             android:id="@+id/dateTextView"
             android:layout_width="wrap_content"
@@ -61,8 +44,7 @@
             android:progress="0"
             android:layout_below="@id/timeTextView"
             android:layout_marginTop="16dp"
-            android:layout_marginBottom="16dp"
-            android:layout_above="@+id/map_container"/>
+            android:layout_marginBottom="16dp"/>
 
         <TextView
             android:id="@+id/currentStepsTextView"
@@ -71,8 +53,7 @@
             android:text="0"
             android:layout_alignParentStart="true"
             android:layout_below="@id/progressBar"
-            android:layout_marginStart="8dp"
-            android:layout_above="@+id/map_container"/>
+            android:layout_marginStart="8dp"/>
 
         <TextView
             android:id="@+id/maxGoalTextView"
@@ -81,8 +62,52 @@
             android:text="10000"
             android:layout_alignParentEnd="true"
             android:layout_below="@id/progressBar"
-            android:layout_marginEnd="8dp"
-            android:layout_above="@+id/map_container"/>
+            android:layout_marginEnd="8dp"/>
+
+        <LinearLayout
+            android:id="@+id/button_container_bottom"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_alignParentBottom="true"
+            android:layout_centerHorizontal="true"
+            android:layout_marginBottom="8dp">
+
+            <Button
+                android:id="@+id/buttonStartExercise"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="운동 시작"
+                android:layout_marginEnd="8dp"/>
+
+            <Button
+                android:id="@+id/buttonEndExercise"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="운동 종료"/>
+        </LinearLayout>
+
+        <androidx.fragment.app.FragmentContainerView
+            android:id="@+id/map_container"
+            android:layout_width="match_parent"
+            android:layout_height="300dp"
+            android:layout_above="@+id/button_container_bottom"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="16dp"
+            tools:layout="@layout/front" />
+
+        <Button
+            android:id="@+id/buttonChangeMap"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignTop="@+id/map_container"
+            android:layout_alignParentStart="true"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="8dp"
+            android:text="지도 바꾸기"
+            android:textSize="12sp"
+            android:padding="8dp"/>
+
 
     </RelativeLayout>
 </androidx.drawerlayout.widget.DrawerLayout>

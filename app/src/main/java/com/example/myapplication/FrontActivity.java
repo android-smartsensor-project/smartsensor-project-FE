@@ -41,14 +41,16 @@ import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.LocationSettingsRequest;
 import com.google.android.gms.location.LocationSettingsResponse;
 import com.google.android.gms.location.SettingsClient;
+import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.Polyline;
 import com.google.android.gms.maps.model.PolylineOptions;
-import com.google.android.gms.tasks.OnFailureListener;
-import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.android.gms.tasks.OnFailureListener; // OnFailureListener 임포트 추가!
+import com.google.android.gms.tasks.OnSuccessListener; // OnSuccessListener 임포트 추가!
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.location.Priority;
+import com.google.android.gms.maps.UiSettings;
 
 import com.naver.maps.map.MapFragment;
 import com.naver.maps.map.NaverMap;
@@ -57,6 +59,7 @@ import com.naver.maps.geometry.LatLng;
 import com.naver.maps.map.overlay.PolylineOverlay;
 import com.naver.maps.map.LocationTrackingMode;
 import com.naver.maps.map.util.FusedLocationSource;
+import com.naver.maps.map.CameraUpdate;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -75,6 +78,8 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
     private TextView maxGoalTextView;
     private ProgressBar progressBar;
     private Button buttonChangeMap;
+    private Button buttonStartExercise;
+    private Button buttonEndExercise;
 
     private SensorManager sensorManager;
     private Sensor accelerometerSensor;
@@ -132,6 +137,8 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
         maxGoalTextView = findViewById(R.id.maxGoalTextView);
         progressBar = findViewById(R.id.progressBar);
         buttonChangeMap = findViewById(R.id.buttonChangeMap);
+        buttonStartExercise = findViewById(R.id.buttonStartExercise);
+        buttonEndExercise = findViewById(R.id.buttonEndExercise);
 
         progressBar.setMax(10000);
         maxGoalTextView.setText(String.valueOf(10000));
@@ -144,6 +151,30 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
                 }
             });
         }
+
+        if (buttonStartExercise != null) {
+            buttonStartExercise.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    startExercise();
+                }
+            });
+        }
+
+        if (buttonEndExercise != null) {
+            buttonEndExercise.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    endExercise();
+                }
+            });
+        }
+
+        if (buttonStartExercise != null && buttonEndExercise != null) {
+            buttonStartExercise.setVisibility(View.VISIBLE);
+            buttonEndExercise.setVisibility(View.GONE);
+        }
+
 
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 
@@ -188,8 +219,6 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
         }
 
         updateDateTime();
-
-        checkLocationPermissions();
     }
 
     private void checkLocationPermissions() {
@@ -277,6 +306,9 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
                         .width(10);
 
                 googlePolyline = googleMap.addPolyline(polylineOptions);
+            } else if (pathPoints.size() <= 1 && googlePolyline != null) {
+                googlePolyline.remove();
+                googlePolyline = null;
             }
         } else if (currentFragment instanceof MapFragment && naverMap != null) {
             if (pathPoints.size() > 1) {
@@ -294,6 +326,9 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
                 naverPolylineOverlay.setColor(android.graphics.Color.RED);
                 naverPolylineOverlay.setWidth(10);
                 naverPolylineOverlay.setMap(naverMap);
+            } else if (pathPoints.size() <= 1 && naverPolylineOverlay != null) {
+                naverPolylineOverlay.setMap(null);
+                naverPolylineOverlay = null;
             }
         }
     }
@@ -348,22 +383,55 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
         if (newFragment != null) {
             fragmentTransaction.add(R.id.map_container, newFragment);
             fragmentTransaction.commit();
-            pathPoints.clear();
         } else {
             Toast.makeText(this, "지도 로드 실패!", Toast.LENGTH_SHORT).show();
         }
     }
 
+    @SuppressLint("MissingPermission")
     @Override
     public void onMapReady(@NonNull GoogleMap map) {
         googleMap = map;
         Log.d("MapReady", "Google Map is ready.");
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            googleMap.setMyLocationEnabled(true);
+            googleMap.getUiSettings().setMyLocationButtonEnabled(true);
+
+            // Google 지도가 켜지자마자 현재 위치를 한 번만 가져와서 카메라 이동
+            fusedLocationClient.getLastLocation()
+                    .addOnSuccessListener(this, new OnSuccessListener<Location>() {
+                        @Override
+                        public void onSuccess(Location location) {
+                            if (location != null) {
+                                com.google.android.gms.maps.model.LatLng currentLocation = new com.google.android.gms.maps.model.LatLng(location.getLatitude(), location.getLongitude());
+                                googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(currentLocation, 15));
+                                Log.d("MapReady", "Moved camera to last known location.");
+                            } else {
+                                Log.d("MapReady", "Last known location is null.");
+                            }
+                        }
+                    })
+                    .addOnFailureListener(this, new OnFailureListener() {
+                        @Override
+                        public void onFailure(@NonNull Exception e) {
+                            Log.e("MapReady", "Error getting last known location", e);
+                        }
+                    });
+        }
     }
 
     @Override
     public void onMapReady(@NonNull NaverMap map) {
         naverMap = map;
         Log.d("MapReady", "Naver Map is ready.");
+
+        naverMap.setLocationSource(naverLocationSource);
+        naverMap.setLocationTrackingMode(LocationTrackingMode.Follow);
+
+        if (!pathPoints.isEmpty()) {
+            naverMap.moveCamera(CameraUpdate.scrollTo(new com.naver.maps.geometry.LatLng(pathPoints.get(pathPoints.size() - 1).latitude, pathPoints.get(pathPoints.size() - 1).longitude)));
+        }
     }
 
     @Override
@@ -373,7 +441,6 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
             sensorManager.registerListener(this, accelerometerSensor, SensorManager.SENSOR_DELAY_GAME);
         }
         handler.post(updateTimeRunnable);
-        startLocationUpdates();
     }
 
     @Override
@@ -383,7 +450,6 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
             sensorManager.unregisterListener(this);
         }
         handler.removeCallbacks(updateTimeRunnable);
-        stopLocationUpdates();
     }
 
     @Override
@@ -440,11 +506,45 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
         if (requestCode == REQUEST_CHECK_SETTINGS) {
             if (resultCode == RESULT_OK) {
                 Log.d("LocationUpdate", "User enabled location settings.");
-                startLocationUpdates();
             } else {
                 Log.d("LocationUpdate", "User did not enable location settings.");
                 Toast.makeText(this, "위치 설정이 꺼져 있어 경로를 표시할 수 없습니다.", Toast.LENGTH_LONG).show();
             }
         }
+    }
+
+    private void startExercise() {
+        pathPoints.clear();
+        if (googlePolyline != null) {
+            googlePolyline.remove();
+            googlePolyline = null;
+        }
+        if (naverPolylineOverlay != null) {
+            naverPolylineOverlay.setMap(null);
+            naverPolylineOverlay = null;
+        }
+        currentDailySteps = 0;
+        currentStepsTextView.setText(String.valueOf(currentDailySteps));
+        progressBar.setProgress(currentDailySteps);
+
+        checkLocationPermissions();
+
+        if (buttonStartExercise != null && buttonEndExercise != null) {
+            buttonStartExercise.setVisibility(View.GONE);
+            buttonEndExercise.setVisibility(View.VISIBLE);
+        }
+
+        Toast.makeText(this, "운동을 시작합니다!", Toast.LENGTH_SHORT).show();
+    }
+
+    private void endExercise() {
+        stopLocationUpdates();
+
+        if (buttonStartExercise != null && buttonEndExercise != null) {
+            buttonStartExercise.setVisibility(View.VISIBLE);
+            buttonEndExercise.setVisibility(View.GONE);
+        }
+
+        Toast.makeText(this, "운동이 종료되었습니다.", Toast.LENGTH_SHORT).show();
     }
 }
