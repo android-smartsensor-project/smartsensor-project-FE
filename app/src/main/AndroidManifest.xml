@@ -7,6 +7,11 @@
 
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH"/> <!-- 이 권한을 추가해줘! -->
+
 
     <application
         android:allowBackup="true"
@@ -44,6 +49,12 @@
         <activity android:name=".SignUp2Activity" android:exported="false"/>
         <activity android:name=".SignUp3Activity" android:exported="false"/>
         <activity android:name=".FrontActivity" android:exported="false"/>
+
+        <service
+            android:name=".ExerciseService"
+            android:foregroundServiceType="location|health"
+            android:exported="false"/>
+
     </application>
 
 </manifest>

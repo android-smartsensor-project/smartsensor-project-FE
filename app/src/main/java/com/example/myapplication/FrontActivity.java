@@ -8,19 +8,21 @@ import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
 import androidx.fragment.app.FragmentTransaction;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.IntentSender;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
-import android.hardware.SensorManager;
 import android.location.Location;
 import android.os.Bundle;
 import android.os.Handler;
@@ -41,7 +43,6 @@ import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.LocationSettingsRequest;
 import com.google.android.gms.location.LocationSettingsResponse;
-import com.google.android.gms.location.SettingsClient;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.SupportMapFragment;
@@ -70,8 +71,9 @@ import java.util.Locale;
 import java.util.TimeZone;
 import java.lang.Math;
 import android.location.Location;
+import android.app.PendingIntent;
 
-public class FrontActivity extends AppCompatActivity implements SensorEventListener, com.google.android.gms.maps.OnMapReadyCallback, com.naver.maps.map.OnMapReadyCallback {
+public class FrontActivity extends AppCompatActivity implements com.google.android.gms.maps.OnMapReadyCallback, com.naver.maps.map.OnMapReadyCallback {
 
     private TextView dateTextView;
     private TextView timeTextView;
@@ -84,17 +86,6 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
 
     private ImageView imageViewRabbit;
     private TextView textViewStepBubble;
-
-    private SensorManager sensorManager;
-    private Sensor accelerometerSensor;
-
-    private int currentDailySteps = 0;
-    private float[] accelerometerValues = new float[3];
-    private static final double STEP_THRESHOLD = 10.5;
-    private static final double LOW_THRESHOLD = 9.5;
-    private boolean isPeakDetected = false;
-    private long lastStepTime = 0;
-    private static final long MIN_STEP_INTERVAL_NS = 250 * 1000000;
 
     private Handler handler = new Handler();
     private Runnable updateTimeRunnable = new Runnable() {
@@ -111,9 +102,6 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
     private static final String MAP_TYPE_NAVER = "Naver";
     private SharedPreferences mapPrefs;
 
-    private FusedLocationProviderClient fusedLocationClient;
-    private LocationRequest locationRequest;
-    private LocationCallback locationCallback;
     private List<com.google.android.gms.maps.model.LatLng> pathPoints = new ArrayList<>();
 
     private GoogleMap googleMap;
@@ -127,6 +115,17 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
 
     private FusedLocationSource naverLocationSource;
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1000;
+
+    private BroadcastReceiver stepUpdateReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (ExerciseService.ACTION_STEP_UPDATE.equals(intent.getAction())) {
+                int stepCount = intent.getIntExtra(ExerciseService.EXTRA_STEP_COUNT, 0);
+                updateStepUI(stepCount);
+            }
+        }
+    };
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -163,7 +162,7 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
             buttonStartExercise.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    startExercise();
+                    checkLocationPermissions();
                 }
             });
         }
@@ -182,31 +181,6 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
             buttonEndExercise.setVisibility(View.GONE);
         }
 
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
-
-        locationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000)
-                .setMinUpdateIntervalMillis(500)
-                .build();
-
-        locationCallback = new LocationCallback() {
-            @Override
-            public void onLocationResult(@NonNull LocationResult locationResult) {
-                if (locationResult == null) {
-                    return;
-                }
-                for (Location location : locationResult.getLocations()) {
-                    if (location != null) {
-                        com.google.android.gms.maps.model.LatLng newPoint = new com.google.android.gms.maps.model.LatLng(location.getLatitude(), location.getLongitude());
-                        pathPoints.add(newPoint);
-
-                        Log.d("LocationUpdate", "New Location: " + newPoint.latitude + ", " + newPoint.longitude);
-
-                        updateMapPolyline();
-                    }
-                }
-            }
-        };
-
         naverLocationSource = new FusedLocationSource(this, LOCATION_PERMISSION_REQUEST_CODE);
 
         String savedMapType = mapPrefs.getString(KEY_MAP_TYPE, null);
@@ -216,15 +190,125 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
             loadMapFragment(savedMapType);
         }
 
-        sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
-        if (sensorManager != null) {
-            accelerometerSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-            if (accelerometerSensor == null) {
-                Toast.makeText(this, "가속도 센서를 찾을 수 없습니다 ㅠㅠ", Toast.LENGTH_LONG).show();
-            }
+        updateDateTime();
+        textViewStepBubble.setText("준비 중");
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        handler.post(updateTimeRunnable);
+
+        LocalBroadcastManager.getInstance(this).registerReceiver(stepUpdateReceiver,
+                new IntentFilter(ExerciseService.ACTION_STEP_UPDATE));
+        Log.d("FrontActivity", "BroadcastReceiver registered");
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        handler.removeCallbacks(updateTimeRunnable);
+
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(stepUpdateReceiver);
+        Log.d("FrontActivity", "BroadcastReceiver unregistered");
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+    }
+
+    private void updateDateTime() {
+        Date now = new Date();
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy년 M월 d일 (E)", Locale.KOREAN);
+        dateFormat.setTimeZone(TimeZone.getTimeZone("Asia/Seoul"));
+        String dateString = dateFormat.format(now);
+        dateTextView.setText(dateString);
+
+        SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm", Locale.KOREAN);
+        timeFormat.setTimeZone(TimeZone.getTimeZone("Asia/Seoul"));
+        String timeString = timeFormat.format(now);
+        timeTextView.setText(timeString);
+    }
+
+    private void updateStepUI(int stepCount) {
+        currentStepsTextView.setText(String.valueOf(stepCount));
+        progressBar.setProgress(stepCount);
+        updateRabbitAndBubblePosition();
+        Log.d("FrontActivity", "UI updated with step count: " + stepCount);
+    }
+
+    private void updateRabbitAndBubblePosition() {
+        if (progressBar == null || imageViewRabbit == null || textViewStepBubble == null) {
+            return;
         }
 
-        updateDateTime();
+        if (progressBar.getWidth() == 0 || imageViewRabbit.getWidth() == 0 || textViewStepBubble.getWidth() == 0) {
+            progressBar.post(this::updateRabbitAndBubblePosition);
+            return;
+        }
+
+        final int progressBarWidth = progressBar.getWidth();
+        final int maxProgress = progressBar.getMax();
+        final int currentProgress = progressBar.getProgress();
+
+        if (progressBarWidth <= 0 || maxProgress <= 0) {
+            Log.w("RabbitPosition", "ProgressBar width or max is 0. Cannot update rabbit position.");
+            return;
+        }
+
+        float progressRatio = (float) currentProgress / maxProgress;
+
+        final int rabbitWidth = imageViewRabbit.getWidth();
+        final int bubbleWidth = textViewStepBubble.getWidth();
+
+        float idealRabbitTranslationX = (progressBarWidth * progressRatio) - (rabbitWidth / 2f);
+
+        float minRabbitTranslationX = 0;
+        float maxRabbitTranslationX = progressBarWidth - rabbitWidth;
+        float clampedRabbitTranslationX = Math.max(minRabbitTranslationX, Math.min(idealRabbitTranslationX, maxRabbitTranslationX));
+
+        final float spacingDp = 4f;
+        final float density = getResources().getDisplayMetrics().density;
+        final float spacingPx = spacingDp * density;
+
+        float idealBubbleTranslationX = clampedRabbitTranslationX + rabbitWidth + spacingPx;
+
+        float minBubbleTranslationX = 0;
+        float maxBubbleTranslationX = progressBarWidth - bubbleWidth;
+        float clampedBubbleTranslationX = Math.max(minBubbleTranslationX, Math.min(idealBubbleTranslationX, maxBubbleTranslationX));
+
+        imageViewRabbit.setTranslationX(clampedRabbitTranslationX);
+        textViewStepBubble.setTranslationX(clampedBubbleTranslationX);
+
+        Log.d("RabbitPosition", "Progress: " + currentProgress + ", Width: " + progressBarWidth + ", RabbitWidth: " + rabbitWidth + ", BubbleWidth: " + bubbleWidth + ", ClampedRabbitX: " + clampedRabbitTranslationX + ", ClampedBubbleX: " + clampedBubbleTranslationX);
+    }
+
+    private void startExercise() {
+        Intent serviceIntent = new Intent(this, ExerciseService.class);
+        serviceIntent.setAction(ExerciseService.ACTION_START_EXERCISE);
+        ContextCompat.startForegroundService(this, serviceIntent);
+
+        Toast.makeText(this, "운동 시작!", Toast.LENGTH_SHORT).show();
+        buttonStartExercise.setVisibility(View.GONE);
+        buttonEndExercise.setVisibility(View.VISIBLE);
+        pathPoints.clear();
+        updateMapPolyline();
+
+        textViewStepBubble.setText("운동 시작!");
+    }
+
+    private void endExercise() {
+        Intent serviceIntent = new Intent(this, ExerciseService.class);
+        serviceIntent.setAction(ExerciseService.ACTION_STOP_EXERCISE);
+        startService(serviceIntent);
+
+        Toast.makeText(this, "운동 종료!", Toast.LENGTH_SHORT).show();
+        buttonStartExercise.setVisibility(View.VISIBLE);
+        buttonEndExercise.setVisibility(View.GONE);
+
+        textViewStepBubble.setText("운동 종료");
+        updateStepUI(0);
     }
 
     private void checkLocationPermissions() {
@@ -234,7 +318,7 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
                     new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
                     REQUEST_LOCATION_PERMISSION);
         } else {
-            startLocationUpdates();
+            startExercise();
         }
     }
 
@@ -249,53 +333,11 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
         if (requestCode == REQUEST_LOCATION_PERMISSION) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 Toast.makeText(this, "위치 권한이 허용되었습니다.", Toast.LENGTH_SHORT).show();
-                startLocationUpdates();
+                startExercise();
             } else {
                 Toast.makeText(this, "위치 권한이 거부되어 경로를 표시할 수 없습니다.", Toast.LENGTH_LONG).show();
             }
         }
-    }
-
-    @SuppressLint("MissingPermission")
-    private void startLocationUpdates() {
-        Log.d("LocationUpdate", "Attempting to start location updates.");
-
-        LocationSettingsRequest.Builder builder = new LocationSettingsRequest.Builder()
-                .addLocationRequest(locationRequest);
-        SettingsClient client = LocationServices.getSettingsClient(this);
-        Task<LocationSettingsResponse> task = client.checkLocationSettings(builder.build());
-
-        task.addOnSuccessListener(this, locationSettingsResponse -> {
-            Log.d("LocationUpdate", "Location settings check successful. Requesting updates.");
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-                    == PackageManager.PERMISSION_GRANTED) {
-
-                LocationRequest testLocationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 500)
-                        .setMinUpdateIntervalMillis(250)
-                        .build();
-
-                fusedLocationClient.requestLocationUpdates(testLocationRequest,
-                        locationCallback,
-                        Looper.getMainLooper());
-                Log.d("LocationUpdate", "Location updates started.");
-            }
-        });
-
-        task.addOnFailureListener(this, e -> {
-            if (e instanceof ResolvableApiException) {
-                try {
-                    ResolvableApiException resolvable = (ResolvableApiException) e;
-                    resolvable.startResolutionForResult(FrontActivity.this,
-                            REQUEST_CHECK_SETTINGS);
-                } catch (IntentSender.SendIntentException sendEx) {
-                }
-            }
-        });
-    }
-
-    private void stopLocationUpdates() {
-        fusedLocationClient.removeLocationUpdates(locationCallback);
-        Log.d("LocationUpdate", "Location updates stopped.");
     }
 
     private void updateMapPolyline() {
@@ -404,7 +446,7 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
             googleMap.setMyLocationEnabled(true);
             googleMap.getUiSettings().setMyLocationButtonEnabled(true);
 
-            fusedLocationClient.getLastLocation()
+            com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(this).getLastLocation()
                     .addOnSuccessListener(this, new OnSuccessListener<Location>() {
                         @Override
                         public void onSuccess(Location location) {
@@ -439,73 +481,6 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
         }
     }
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        if (accelerometerSensor != null) {
-            sensorManager.registerListener(this, accelerometerSensor, SensorManager.SENSOR_DELAY_GAME);
-        }
-        handler.post(updateTimeRunnable);
-    }
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-        if (sensorManager != null) {
-            sensorManager.unregisterListener(this);
-        }
-        handler.removeCallbacks(updateTimeRunnable);
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-    }
-
-    @Override
-    public void onSensorChanged(SensorEvent event) {
-        if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
-            float x = event.values[0];
-            float y = event.values[1];
-            float z = event.values[2];
-
-            double magnitude = Math.sqrt(x * x + y * y + z * z);
-
-            long currentTime = System.nanoTime();
-
-            if (magnitude > STEP_THRESHOLD && !isPeakDetected && (currentTime - lastStepTime > MIN_STEP_INTERVAL_NS)) {
-                isPeakDetected = true;
-            }
-            else if (magnitude < LOW_THRESHOLD && isPeakDetected) {
-                currentDailySteps++;
-                isPeakDetected = false;
-                lastStepTime = currentTime;
-
-                updateRabbitAndBubblePosition();
-            }
-
-            currentStepsTextView.setText(String.valueOf(currentDailySteps));
-            progressBar.setProgress(currentDailySteps);
-        }
-    }
-
-    @Override
-    public void onAccuracyChanged(Sensor sensor, int accuracy) {
-
-    }
-
-    private void updateDateTime() {
-        Date now = new Date();
-        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy년 M월 d일 (E)", Locale.KOREAN);
-        dateFormat.setTimeZone(TimeZone.getTimeZone("Asia/Seoul"));
-        String dateString = dateFormat.format(now);
-        dateTextView.setText(dateString);
-
-        SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm", Locale.KOREAN);
-        timeFormat.setTimeZone(TimeZone.getTimeZone("Asia/Seoul"));
-        String timeString = timeFormat.format(now);
-        timeTextView.setText(timeString);
-    }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -513,80 +488,11 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
         if (requestCode == REQUEST_CHECK_SETTINGS) {
             if (resultCode == RESULT_OK) {
                 Log.d("LocationUpdate", "User enabled location settings.");
+                startExercise();
             } else {
                 Log.d("LocationUpdate", "User did not enable location settings.");
-                Toast.makeText(this, "위치 설정이 꺼져 있어 경로를 표시할 수 없습니다.", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "위치 설정을 켜야 경로를 기록할 수 있습니다.", Toast.LENGTH_LONG).show();
             }
         }
-    }
-
-    private void startExercise() {
-        pathPoints.clear();
-        if (googlePolyline != null) {
-            googlePolyline.remove();
-            googlePolyline = null;
-        }
-        if (naverPolylineOverlay != null) {
-            naverPolylineOverlay.setMap(null);
-            naverPolylineOverlay = null;
-        }
-        currentDailySteps = 0;
-        currentStepsTextView.setText(String.valueOf(currentDailySteps));
-        progressBar.setProgress(currentDailySteps);
-
-        updateRabbitAndBubblePosition();
-        if (imageViewRabbit != null) imageViewRabbit.setVisibility(View.VISIBLE);
-        if (textViewStepBubble != null) textViewStepBubble.setVisibility(View.VISIBLE);
-
-        checkLocationPermissions();
-
-        if (buttonStartExercise != null && buttonEndExercise != null) {
-            buttonStartExercise.setVisibility(View.GONE);
-            buttonEndExercise.setVisibility(View.VISIBLE);
-        }
-
-        Toast.makeText(this, "운동을 시작합니다!", Toast.LENGTH_SHORT).show();
-    }
-
-    private void endExercise() {
-        stopLocationUpdates();
-
-        if (buttonStartExercise != null && buttonEndExercise != null) {
-            buttonStartExercise.setVisibility(View.VISIBLE);
-            buttonEndExercise.setVisibility(View.GONE);
-        }
-
-        Toast.makeText(this, "운동이 종료되었습니다.", Toast.LENGTH_SHORT).show();
-    }
-
-    private void updateRabbitAndBubblePosition() {
-        if (progressBar == null || imageViewRabbit == null || textViewStepBubble == null) {
-            return;
-        }
-
-        final int progressBarWidth = progressBar.getWidth();
-        final int maxProgress = progressBar.getMax();
-        final int currentProgress = progressBar.getProgress();
-
-        if (progressBarWidth <= 0 || maxProgress <= 0) {
-            Log.w("RabbitPosition", "ProgressBar width or max is 0. Cannot update rabbit position.");
-            return;
-        }
-
-        float progressRatio = (float) currentProgress / maxProgress;
-
-        final int rabbitWidth = imageViewRabbit.getWidth();
-        final int bubbleWidth = textViewStepBubble.getWidth();
-
-        float rabbitTranslationX = (progressBarWidth * progressRatio) - (rabbitWidth / 2f);
-
-        float bubbleTranslationX = rabbitTranslationX + (rabbitWidth / 2f) - (bubbleWidth / 2f);
-
-        imageViewRabbit.setTranslationX(rabbitTranslationX);
-        textViewStepBubble.setTranslationX(bubbleTranslationX);
-
-        textViewStepBubble.setText(currentProgress + " 걸음");
-
-        Log.d("RabbitPosition", "Progress: " + currentProgress + ", Width: " + progressBarWidth + ", RabbitX: " + rabbitTranslationX + ", BubbleX: " + bubbleTranslationX);
     }
 }
