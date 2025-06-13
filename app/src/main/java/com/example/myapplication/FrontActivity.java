@@ -185,7 +185,7 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
             buttonStartExercise.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    checkLocationPermissions();
+                    checkRequiredPermissions(); // 필요한 권한 체크 및 요청 메소드 호출
                 }
             });
         }
@@ -229,7 +229,6 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
         LocalBroadcastManager.getInstance(this).registerReceiver(exerciseEndReceiver,
                 new IntentFilter(ExerciseService.ACTION_EXERCISE_END));
         Log.d("FrontActivity", "ExerciseEndReceiver registered");
-
     }
 
     @Override
@@ -345,34 +344,60 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
         updateMapPolyline();
     }
 
-    private void checkLocationPermissions() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED) {
+    // 필요한 권한들을 체크하고 요청하는 메소드
+    private void checkRequiredPermissions() {
+        List<String> permissionsToRequest = new ArrayList<>();
+
+        // 위치 권한 체크
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            permissionsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION);
+        }
+
+        // 신체 활동 권한 체크
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACTIVITY_RECOGNITION) != PackageManager.PERMISSION_GRANTED) {
+            permissionsToRequest.add(Manifest.permission.ACTIVITY_RECOGNITION);
+        }
+
+        // 필요한 권한이 있다면 요청
+        if (!permissionsToRequest.isEmpty()) {
             ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
-                    REQUEST_LOCATION_PERMISSION);
+                    permissionsToRequest.toArray(new String[0]),
+                    REQUEST_LOCATION_PERMISSION); // 기존 위치 권한 요청 코드 재사용
         } else {
+            // 모든 권한이 이미 허용되었다면 바로 운동 시작
             startExercise();
         }
     }
 
+    // 권한 요청 결과 처리 메소드 수정
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        // Naver 지도 위치 소스 권한 결과 처리 (필요하다면)
         if (naverLocationSource != null) {
             naverLocationSource.onRequestPermissionsResult(
                     requestCode, permissions, grantResults);
         }
 
-        if (requestCode == REQUEST_LOCATION_PERMISSION) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                Toast.makeText(this, "위치 권한이 허용되었습니다.", Toast.LENGTH_SHORT).show();
-                startExercise();
+        if (requestCode == REQUEST_LOCATION_PERMISSION) { // 우리가 요청한 권한 결과
+            boolean allPermissionsGranted = true;
+            for (int result : grantResults) {
+                if (result != PackageManager.PERMISSION_GRANTED) {
+                    allPermissionsGranted = false;
+                    break;
+                }
+            }
+
+            if (allPermissionsGranted) {
+                Toast.makeText(this, "필요한 모든 권한이 허용되었습니다.", Toast.LENGTH_SHORT).show();
+                startExercise(); // 모든 권한 허용 시 운동 시작
             } else {
-                Toast.makeText(this, "위치 권한이 거부되어 경로를 표시할 수 없습니다.", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "필요한 권한이 거부되어 운동 기록을 시작할 수 없습니다.", Toast.LENGTH_LONG).show();
             }
         }
     }
+
 
     private void updateMapPolyline() {
         Fragment currentFragment = getSupportFragmentManager().findFragmentById(R.id.map_container);
@@ -516,7 +541,7 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
         if (requestCode == REQUEST_CHECK_SETTINGS) {
             if (resultCode == RESULT_OK) {
                 Log.d("LocationUpdate", "User enabled location settings.");
-                startExercise();
+                checkRequiredPermissions(); // 위치 설정 켜졌으면 다시 권한 체크
             } else {
                 Log.d("LocationUpdate", "User did not enable location settings.");
                 Toast.makeText(this, "위치 설정을 켜야 경로를 기록할 수 있습니다.", Toast.LENGTH_LONG).show();
