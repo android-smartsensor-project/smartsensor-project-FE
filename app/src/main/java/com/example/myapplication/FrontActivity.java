@@ -72,6 +72,8 @@ import java.util.TimeZone;
 import java.lang.Math;
 import android.location.Location;
 import android.app.PendingIntent;
+import java.util.concurrent.TimeUnit;
+
 
 public class FrontActivity extends AppCompatActivity implements com.google.android.gms.maps.OnMapReadyCallback, com.naver.maps.map.OnMapReadyCallback {
 
@@ -122,6 +124,27 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
             if (ExerciseService.ACTION_STEP_UPDATE.equals(intent.getAction())) {
                 int stepCount = intent.getIntExtra(ExerciseService.EXTRA_STEP_COUNT, 0);
                 updateStepUI(stepCount);
+            }
+        }
+    };
+
+    private BroadcastReceiver exerciseEndReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (ExerciseService.ACTION_EXERCISE_END.equals(intent.getAction())) {
+                float lastSpeedKmh = intent.getFloatExtra(ExerciseService.EXTRA_LAST_SPEED_KMH, 0f);
+                long durationMillis = intent.getLongExtra(ExerciseService.EXTRA_DURATION_MILLIS, 0L);
+
+                Log.d("FrontActivity", "운동 종료 데이터 수신. 마지막 속도: " + lastSpeedKmh + " km/h, 운동 시간: " + durationMillis + " ms");
+
+                long hours = TimeUnit.MILLISECONDS.toHours(durationMillis);
+                long minutes = TimeUnit.MILLISECONDS.toMinutes(durationMillis) % 60;
+                long seconds = TimeUnit.MILLISECONDS.toSeconds(durationMillis) % 60;
+
+                String durationString = String.format(Locale.KOREAN, "%02d시간 %02d분 %02d초", hours, minutes, seconds);
+
+                Toast.makeText(context, "운동 종료!\n총 걸음 수: " + progressBar.getProgress() + "\n마지막 속도: " + String.format(Locale.KOREAN, "%.1f km/h", lastSpeedKmh) + "\n운동 시간: " + durationString, Toast.LENGTH_LONG).show();
+
             }
         }
     };
@@ -201,7 +224,12 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
 
         LocalBroadcastManager.getInstance(this).registerReceiver(stepUpdateReceiver,
                 new IntentFilter(ExerciseService.ACTION_STEP_UPDATE));
-        Log.d("FrontActivity", "BroadcastReceiver registered");
+        Log.d("FrontActivity", "StepUpdateReceiver registered");
+
+        LocalBroadcastManager.getInstance(this).registerReceiver(exerciseEndReceiver,
+                new IntentFilter(ExerciseService.ACTION_EXERCISE_END));
+        Log.d("FrontActivity", "ExerciseEndReceiver registered");
+
     }
 
     @Override
@@ -210,7 +238,10 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
         handler.removeCallbacks(updateTimeRunnable);
 
         LocalBroadcastManager.getInstance(this).unregisterReceiver(stepUpdateReceiver);
-        Log.d("FrontActivity", "BroadcastReceiver unregistered");
+        Log.d("FrontActivity", "StepUpdateReceiver unregistered");
+
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(exerciseEndReceiver);
+        Log.d("FrontActivity", "ExerciseEndReceiver unregistered");
     }
 
     @Override
@@ -309,6 +340,9 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
 
         textViewStepBubble.setText("운동 종료");
         updateStepUI(0);
+
+        pathPoints.clear();
+        updateMapPolyline();
     }
 
     private void checkLocationPermissions() {
@@ -344,42 +378,36 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
         Fragment currentFragment = getSupportFragmentManager().findFragmentById(R.id.map_container);
 
         if (currentFragment instanceof SupportMapFragment && googleMap != null) {
+            if (googlePolyline != null) {
+                googlePolyline.remove();
+                googlePolyline = null;
+            }
             if (pathPoints.size() > 1) {
-                if (googlePolyline != null) {
-                    googlePolyline.remove();
-                }
                 PolylineOptions polylineOptions = new PolylineOptions()
                         .addAll(pathPoints)
                         .color(android.graphics.Color.RED)
                         .width(10);
-
                 googlePolyline = googleMap.addPolyline(polylineOptions);
-            } else if (pathPoints.size() <= 1 && googlePolyline != null) {
-                googlePolyline.remove();
-                googlePolyline = null;
             }
         } else if (currentFragment instanceof MapFragment && naverMap != null) {
+            if (naverPolylineOverlay != null) {
+                naverPolylineOverlay.setMap(null);
+                naverPolylineOverlay = null;
+            }
             if (pathPoints.size() > 1) {
                 List<com.naver.maps.geometry.LatLng> naverPathPoints = new ArrayList<>();
                 for (com.google.android.gms.maps.model.LatLng googleLatLng : pathPoints) {
                     naverPathPoints.add(new com.naver.maps.geometry.LatLng(googleLatLng.latitude, googleLatLng.longitude));
                 }
-
-                if (naverPolylineOverlay != null) {
-                    naverPolylineOverlay.setMap(null);
-                }
-
                 naverPolylineOverlay = new PolylineOverlay();
                 naverPolylineOverlay.setCoords(naverPathPoints);
                 naverPolylineOverlay.setColor(android.graphics.Color.RED);
                 naverPolylineOverlay.setWidth(10);
                 naverPolylineOverlay.setMap(naverMap);
-            } else if (pathPoints.size() <= 1 && naverPolylineOverlay != null) {
-                naverPolylineOverlay.setMap(null);
-                naverPolylineOverlay = null;
             }
         }
     }
+
 
     private void showMapChoiceDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
