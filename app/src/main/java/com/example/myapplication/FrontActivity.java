@@ -23,6 +23,7 @@ import android.content.pm.PackageManager;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.location.Location;
 import android.os.Bundle;
 import android.os.Handler;
@@ -43,6 +44,7 @@ import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.LocationSettingsRequest;
 import com.google.android.gms.location.LocationSettingsResponse;
+import com.google.android.gms.location.SettingsClient;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.SupportMapFragment;
@@ -74,8 +76,7 @@ import android.location.Location;
 import android.app.PendingIntent;
 import java.util.concurrent.TimeUnit;
 
-
-public class FrontActivity extends AppCompatActivity implements com.google.android.gms.maps.OnMapReadyCallback, com.naver.maps.map.OnMapReadyCallback {
+public class FrontActivity extends AppCompatActivity implements SensorEventListener, com.google.android.gms.maps.OnMapReadyCallback, com.naver.maps.map.OnMapReadyCallback {
 
     private TextView dateTextView;
     private TextView timeTextView;
@@ -85,9 +86,18 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
     private Button buttonChangeMap;
     private Button buttonStartExercise;
     private Button buttonEndExercise;
-
     private ImageView imageViewRabbit;
     private TextView textViewStepBubble;
+
+    private SensorManager sensorManager;
+    private Sensor accelerometerSensor;
+    private int currentDailySteps = 0;
+    private float[] accelerometerValues = new float[3];
+    private static final double STEP_THRESHOLD = 10.5;
+    private static final double LOW_THRESHOLD = 9.5;
+    private boolean isPeakDetected = false;
+    private long lastStepTime = 0;
+    private static final long MIN_STEP_INTERVAL_NS = 250 * 1000000;
 
     private Handler handler = new Handler();
     private Runnable updateTimeRunnable = new Runnable() {
@@ -104,6 +114,9 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
     private static final String MAP_TYPE_NAVER = "Naver";
     private SharedPreferences mapPrefs;
 
+    private FusedLocationProviderClient fusedLocationClient;
+    private LocationRequest locationRequest;
+    private LocationCallback locationCallback;
     private List<com.google.android.gms.maps.model.LatLng> pathPoints = new ArrayList<>();
 
     private GoogleMap googleMap;
@@ -114,7 +127,6 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
 
     private static final int REQUEST_LOCATION_PERMISSION = 100;
     private static final int REQUEST_CHECK_SETTINGS = 200;
-
     private FusedLocationSource naverLocationSource;
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1000;
 
@@ -141,14 +153,25 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
                 long minutes = TimeUnit.MILLISECONDS.toMinutes(durationMillis) % 60;
                 long seconds = TimeUnit.MILLISECONDS.toSeconds(durationMillis) % 60;
 
-                String durationString = String.format(Locale.KOREAN, "%02d시간 %02d분 %02d초", hours, minutes, seconds);
+                String durationString = String.format(Locale.KOREAN, "%02d시간 %02d분 %02초", hours, minutes, seconds);
 
-                Toast.makeText(context, "운동 종료!\n총 걸음 수: " + progressBar.getProgress() + "\n마지막 속도: " + String.format(Locale.KOREAN, "%.1f km/h", lastSpeedKmh) + "\n운동 시간: " + durationString, Toast.LENGTH_LONG).show();
+                String message = "총 걸음 수: " + progressBar.getProgress() + "\n" +
+                        "마지막 속도: " + String.format(Locale.KOREAN, "%.1f km/h", lastSpeedKmh) + "\n" +
+                        "운동 시간: " + durationString;
 
+                new AlertDialog.Builder(context)
+                        .setTitle("운동 종료!")
+                        .setMessage(message)
+                        .setPositiveButton("확인", new DialogInterface.OnClickListener() {
+                            public void onClick(DialogInterface dialog, int which) {
+                                dialog.dismiss();
+                            }
+                        })
+                        .setIcon(android.R.drawable.ic_dialog_info)
+                        .show();
             }
         }
     };
-
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -165,7 +188,6 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
         buttonChangeMap = findViewById(R.id.buttonChangeMap);
         buttonStartExercise = findViewById(R.id.buttonStartExercise);
         buttonEndExercise = findViewById(R.id.buttonEndExercise);
-
         imageViewRabbit = findViewById(R.id.imageViewRabbit);
         textViewStepBubble = findViewById(R.id.textViewStepBubble);
 
@@ -185,7 +207,7 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
             buttonStartExercise.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    checkRequiredPermissions(); // 필요한 권한 체크 및 요청 메소드 호출
+                    checkRequiredPermissions();
                 }
             });
         }
@@ -204,6 +226,27 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
             buttonEndExercise.setVisibility(View.GONE);
         }
 
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+        locationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000)
+                .setMinUpdateIntervalMillis(500)
+                .build();
+        locationCallback = new LocationCallback() {
+            @Override
+            public void onLocationResult(@NonNull LocationResult locationResult) {
+                if (locationResult == null) {
+                    return;
+                }
+                for (Location location : locationResult.getLocations()) {
+                    if (location != null) {
+                        com.google.android.gms.maps.model.LatLng newPoint = new com.google.android.gms.maps.model.LatLng(location.getLatitude(), location.getLongitude());
+                        pathPoints.add(newPoint);
+                        Log.d("LocationUpdate", "New Location: " + newPoint.latitude + ", " + newPoint.longitude);
+                        updateMapPolyline();
+                    }
+                }
+            }
+        };
+
         naverLocationSource = new FusedLocationSource(this, LOCATION_PERMISSION_REQUEST_CODE);
 
         String savedMapType = mapPrefs.getString(KEY_MAP_TYPE, null);
@@ -211,6 +254,14 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
             showMapChoiceDialog();
         } else {
             loadMapFragment(savedMapType);
+        }
+
+        sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
+        if (sensorManager != null) {
+            accelerometerSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+            if (accelerometerSensor == null) {
+                Toast.makeText(this, "가속도 센서를 찾을 수 없습니다 ㅠㅠ", Toast.LENGTH_LONG).show();
+            }
         }
 
         updateDateTime();
@@ -221,6 +272,10 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
     protected void onResume() {
         super.onResume();
         handler.post(updateTimeRunnable);
+
+        if (accelerometerSensor != null) {
+            sensorManager.registerListener(this, accelerometerSensor, SensorManager.SENSOR_DELAY_GAME);
+        }
 
         LocalBroadcastManager.getInstance(this).registerReceiver(stepUpdateReceiver,
                 new IntentFilter(ExerciseService.ACTION_STEP_UPDATE));
@@ -236,6 +291,10 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
         super.onPause();
         handler.removeCallbacks(updateTimeRunnable);
 
+        if (sensorManager != null) {
+            sensorManager.unregisterListener(this);
+        }
+
         LocalBroadcastManager.getInstance(this).unregisterReceiver(stepUpdateReceiver);
         Log.d("FrontActivity", "StepUpdateReceiver unregistered");
 
@@ -246,6 +305,33 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
     @Override
     protected void onDestroy() {
         super.onDestroy();
+    }
+
+    @Override
+    public void onSensorChanged(SensorEvent event) {
+        if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+            float x = event.values[0];
+            float y = event.values[1];
+            float z = event.values[2];
+
+            double magnitude = Math.sqrt(x * x + y * y + z * z);
+
+            long currentTime = System.nanoTime();
+
+            if (magnitude > STEP_THRESHOLD && !isPeakDetected && (currentTime - lastStepTime > MIN_STEP_INTERVAL_NS)) {
+                isPeakDetected = true;
+            } else if (magnitude < LOW_THRESHOLD && isPeakDetected) {
+                currentDailySteps++;
+                isPeakDetected = false;
+                lastStepTime = currentTime;
+
+                updateStepUI(currentDailySteps);
+            }
+        }
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {
     }
 
     private void updateDateTime() {
@@ -333,7 +419,6 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
         serviceIntent.setAction(ExerciseService.ACTION_STOP_EXERCISE);
         startService(serviceIntent);
 
-        Toast.makeText(this, "운동 종료!", Toast.LENGTH_SHORT).show();
         buttonStartExercise.setVisibility(View.VISIBLE);
         buttonEndExercise.setVisibility(View.GONE);
 
@@ -344,43 +429,47 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
         updateMapPolyline();
     }
 
-    // 필요한 권한들을 체크하고 요청하는 메소드
     private void checkRequiredPermissions() {
         List<String> permissionsToRequest = new ArrayList<>();
 
-        // 위치 권한 체크
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             permissionsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION);
         }
 
-        // 신체 활동 권한 체크
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACTIVITY_RECOGNITION) != PackageManager.PERMISSION_GRANTED) {
             permissionsToRequest.add(Manifest.permission.ACTIVITY_RECOGNITION);
         }
 
-        // 필요한 권한이 있다면 요청
         if (!permissionsToRequest.isEmpty()) {
             ActivityCompat.requestPermissions(this,
                     permissionsToRequest.toArray(new String[0]),
-                    REQUEST_LOCATION_PERMISSION); // 기존 위치 권한 요청 코드 재사용
+                    REQUEST_LOCATION_PERMISSION);
         } else {
-            // 모든 권한이 이미 허용되었다면 바로 운동 시작
-            startExercise();
+            startExerciseAndLocationUpdates();
         }
     }
 
-    // 권한 요청 결과 처리 메소드 수정
+    private void checkLocationPermissions() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+                    REQUEST_LOCATION_PERMISSION);
+        } else {
+            startLocationUpdates();
+        }
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
-        // Naver 지도 위치 소스 권한 결과 처리 (필요하다면)
         if (naverLocationSource != null) {
             naverLocationSource.onRequestPermissionsResult(
                     requestCode, permissions, grantResults);
         }
 
-        if (requestCode == REQUEST_LOCATION_PERMISSION) { // 우리가 요청한 권한 결과
+        if (requestCode == REQUEST_LOCATION_PERMISSION) {
             boolean allPermissionsGranted = true;
             for (int result : grantResults) {
                 if (result != PackageManager.PERMISSION_GRANTED) {
@@ -391,83 +480,145 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
 
             if (allPermissionsGranted) {
                 Toast.makeText(this, "필요한 모든 권한이 허용되었습니다.", Toast.LENGTH_SHORT).show();
-                startExercise(); // 모든 권한 허용 시 운동 시작
+                startExerciseAndLocationUpdates();
+
             } else {
-                Toast.makeText(this, "필요한 권한이 거부되어 운동 기록을 시작할 수 없습니다.", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "필요한 권한이 거부되었습니다. 일부 기능을 사용할 수 없습니다.", Toast.LENGTH_LONG).show();
             }
         }
     }
 
-
-    private void updateMapPolyline() {
-        Fragment currentFragment = getSupportFragmentManager().findFragmentById(R.id.map_container);
-
-        if (currentFragment instanceof SupportMapFragment && googleMap != null) {
-            if (googlePolyline != null) {
-                googlePolyline.remove();
-                googlePolyline = null;
-            }
-            if (pathPoints.size() > 1) {
-                PolylineOptions polylineOptions = new PolylineOptions()
-                        .addAll(pathPoints)
-                        .color(android.graphics.Color.RED)
-                        .width(10);
-                googlePolyline = googleMap.addPolyline(polylineOptions);
-            }
-        } else if (currentFragment instanceof MapFragment && naverMap != null) {
-            if (naverPolylineOverlay != null) {
-                naverPolylineOverlay.setMap(null);
-                naverPolylineOverlay = null;
-            }
-            if (pathPoints.size() > 1) {
-                List<com.naver.maps.geometry.LatLng> naverPathPoints = new ArrayList<>();
-                for (com.google.android.gms.maps.model.LatLng googleLatLng : pathPoints) {
-                    naverPathPoints.add(new com.naver.maps.geometry.LatLng(googleLatLng.latitude, googleLatLng.longitude));
-                }
-                naverPolylineOverlay = new PolylineOverlay();
-                naverPolylineOverlay.setCoords(naverPathPoints);
-                naverPolylineOverlay.setColor(android.graphics.Color.RED);
-                naverPolylineOverlay.setWidth(10);
-                naverPolylineOverlay.setMap(naverMap);
-            }
-        }
+    private void startExerciseAndLocationUpdates() {
+        startExercise();
+        checkLocationPermissions();
     }
 
+    @SuppressLint("MissingPermission")
+    private void startLocationUpdates() {
+        Log.d("LocationUpdate", "Attempting to start location updates.");
 
-    private void showMapChoiceDialog() {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("사용할 지도 선택");
-        builder.setItems(new CharSequence[]{"Google 지도", "Naver 지도"}, new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                String selectedMapType;
-                if (which == 0) {
-                    selectedMapType = MAP_TYPE_GOOGLE;
-                } else {
-                    selectedMapType = MAP_TYPE_NAVER;
-                }
-                mapPrefs.edit().putString(KEY_MAP_TYPE, selectedMapType).apply();
-                loadMapFragment(selectedMapType);
+        LocationSettingsRequest.Builder builder = new LocationSettingsRequest.Builder()
+                .addLocationRequest(locationRequest);
+        SettingsClient client = LocationServices.getSettingsClient(this);
+        Task<LocationSettingsResponse> task = client.checkLocationSettings(builder.build());
+
+        task.addOnSuccessListener(this, locationSettingsResponse -> {
+            Log.d("LocationUpdate", "Location settings check successful. Requesting updates.");
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                    == PackageManager.PERMISSION_GRANTED) {
+
+                fusedLocationClient.requestLocationUpdates(locationRequest,
+                        locationCallback,
+                        Looper.getMainLooper());
+                Log.d("LocationUpdate", "Location updates started.");
+            } else {
+                Log.e("LocationUpdate", "Permission ACCESS_FINE_LOCATION not granted when attempting to start updates.");
             }
         });
-        builder.setCancelable(false);
-        builder.show();
+
+        task.addOnFailureListener(this, e -> {
+            if (e instanceof ResolvableApiException) {
+                try {
+                    ResolvableApiException resolvable = (ResolvableApiException) e;
+                    resolvable.startResolutionForResult(FrontActivity.this,
+                            REQUEST_CHECK_SETTINGS);
+                } catch (IntentSender.SendIntentException sendEx) {
+                    Log.e("LocationUpdate", "Error starting resolution for location settings", sendEx);
+                }
+            } else {
+                Log.e("LocationUpdate", "Error checking location settings", e);
+            }
+        });
+    }
+
+    private void stopLocationUpdates() {
+        fusedLocationClient.removeLocationUpdates(locationCallback);
+        Log.d("LocationUpdate", "Location updates stopped.");
+    }
+
+    @SuppressLint("MissingPermission")
+    @Override
+    public void onMapReady(@NonNull GoogleMap map) {
+        googleMap = map;
+        Log.d("MapReady", "Google Map is ready.");
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            googleMap.setMyLocationEnabled(true);
+            googleMap.getUiSettings().setMyLocationButtonEnabled(true);
+
+            fusedLocationClient.getLastLocation()
+                    .addOnSuccessListener(this, new OnSuccessListener<Location>() {
+                        @Override
+                        public void onSuccess(Location location) {
+                            if (location != null) {
+                                com.google.android.gms.maps.model.LatLng currentLocation = new com.google.android.gms.maps.model.LatLng(location.getLatitude(), location.getLongitude());
+                                googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(currentLocation, 15));
+                                Log.d("MapReady", "Moved camera to last known location.");
+                            } else {
+                                Log.d("MapReady", "Last known location is null.");
+                            }
+                        }
+                    })
+                    .addOnFailureListener(this, new OnFailureListener() {
+                        @Override
+                        public void onFailure(@NonNull Exception e) {
+                            Log.e("MapReady", "Error getting last known location", e);
+                        }
+                    });
+        } else {
+            Log.w("MapReady", "Location permission not granted for Google Map MyLocation layer.");
+        }
+    }
+
+    @Override
+    public void onMapReady(@NonNull NaverMap map) {
+        naverMap = map;
+        Log.d("MapReady", "Naver Map is ready.");
+
+        naverMap.setLocationSource(naverLocationSource);
+        naverMap.setLocationTrackingMode(LocationTrackingMode.Follow);
+
+        if (!pathPoints.isEmpty()) {
+            naverMap.moveCamera(CameraUpdate.scrollTo(new com.naver.maps.geometry.LatLng(pathPoints.get(pathPoints.size() - 1).latitude, pathPoints.get(pathPoints.size() - 1).longitude)));
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_CHECK_SETTINGS) {
+            if (resultCode == RESULT_OK) {
+                Log.d("LocationUpdate", "User enabled location settings.");
+                startLocationUpdates();
+            } else {
+                Log.d("LocationUpdate", "User did not enable location settings.");
+                Toast.makeText(this, "위치 설정을 켜야 경로를 표시할 수 있습니다.", Toast.LENGTH_LONG).show();
+            }
+        }
+    }
+
+    private void showMapChoiceDialog() {
+        Log.d("FrontActivity", "showMapChoiceDialog called. Implementation needed.");
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("지도 선택")
+                .setItems(new CharSequence[]{"Google 지도", "Naver 지도"}, new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        String selectedMapType = (which == 0) ? MAP_TYPE_GOOGLE : MAP_TYPE_NAVER;
+                        mapPrefs.edit().putString(KEY_MAP_TYPE, selectedMapType).apply();
+                        loadMapFragment(selectedMapType);
+                    }
+                });
+        builder.create().show();
     }
 
     private void loadMapFragment(String mapType) {
+        Log.d("FrontActivity", "loadMapFragment called with type: " + mapType + ". Implementation needed.");
         FragmentManager fragmentManager = getSupportFragmentManager();
         FragmentTransaction fragmentTransaction = fragmentManager.beginTransaction();
 
         Fragment existingFragment = fragmentManager.findFragmentById(R.id.map_container);
         if (existingFragment != null) {
             fragmentTransaction.remove(existingFragment);
-            if (existingFragment instanceof SupportMapFragment) {
-                googleMap = null;
-                googlePolyline = null;
-            } else if (existingFragment instanceof MapFragment) {
-                naverMap = null;
-                naverPolylineOverlay = null;
-            }
         }
 
         Fragment newFragment = null;
@@ -489,63 +640,50 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
         }
     }
 
-    @SuppressLint("MissingPermission")
-    @Override
-    public void onMapReady(@NonNull GoogleMap map) {
-        googleMap = map;
-        Log.d("MapReady", "Google Map is ready.");
+    private void updateMapPolyline() {
+        Log.d("FrontActivity", "updateMapPolyline called.");
 
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-            googleMap.setMyLocationEnabled(true);
-            googleMap.getUiSettings().setMyLocationButtonEnabled(true);
+        if (pathPoints.size() >= 2) {
+            Fragment currentFragment = getSupportFragmentManager().findFragmentById(R.id.map_container);
 
-            com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(this).getLastLocation()
-                    .addOnSuccessListener(this, new OnSuccessListener<Location>() {
-                        @Override
-                        public void onSuccess(Location location) {
-                            if (location != null) {
-                                com.google.android.gms.maps.model.LatLng currentLocation = new com.google.android.gms.maps.model.LatLng(location.getLatitude(), location.getLongitude());
-                                googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(currentLocation, 15));
-                                Log.d("MapReady", "Moved camera to last known location.");
-                            } else {
-                                Log.d("MapReady", "Last known location is null.");
-                            }
-                        }
-                    })
-                    .addOnFailureListener(this, new OnFailureListener() {
-                        @Override
-                        public void onFailure(@NonNull Exception e) {
-                            Log.e("MapReady", "Error getting last known location", e);
-                        }
-                    });
-        }
-    }
+            if (currentFragment instanceof SupportMapFragment && googleMap != null) {
+                if (googlePolyline != null) {
+                    googlePolyline.remove();
+                }
+                PolylineOptions polylineOptions = new PolylineOptions()
+                        .addAll(pathPoints)
+                        .color(android.graphics.Color.RED)
+                        .width(10);
+                googlePolyline = googleMap.addPolyline(polylineOptions);
+                Log.d("MapUpdate", "Google Map polyline updated with " + pathPoints.size() + " points.");
 
-    @Override
-    public void onMapReady(@NonNull NaverMap map) {
-        naverMap = map;
-        Log.d("MapReady", "Naver Map is ready.");
-
-        naverMap.setLocationSource(naverLocationSource);
-        naverMap.setLocationTrackingMode(LocationTrackingMode.Follow);
-
-        if (!pathPoints.isEmpty()) {
-            naverMap.moveCamera(CameraUpdate.scrollTo(new com.naver.maps.geometry.LatLng(pathPoints.get(pathPoints.size() - 1).latitude, pathPoints.get(pathPoints.size() - 1).longitude)));
-        }
-    }
-
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQUEST_CHECK_SETTINGS) {
-            if (resultCode == RESULT_OK) {
-                Log.d("LocationUpdate", "User enabled location settings.");
-                checkRequiredPermissions(); // 위치 설정 켜졌으면 다시 권한 체크
-            } else {
-                Log.d("LocationUpdate", "User did not enable location settings.");
-                Toast.makeText(this, "위치 설정을 켜야 경로를 기록할 수 있습니다.", Toast.LENGTH_LONG).show();
+            } else if (currentFragment instanceof MapFragment && naverMap != null) {
+                if (naverPolylineOverlay != null) {
+                    naverPolylineOverlay.setMap(null);
+                }
+                List<com.naver.maps.geometry.LatLng> naverPathPoints = new ArrayList<>();
+                for (com.google.android.gms.maps.model.LatLng googleLatLng : pathPoints) {
+                    naverPathPoints.add(new com.naver.maps.geometry.LatLng(googleLatLng.latitude, googleLatLng.longitude)); // 수정된 부분!
+                }
+                naverPolylineOverlay = new PolylineOverlay();
+                naverPolylineOverlay.setCoords(naverPathPoints);
+                naverPolylineOverlay.setColor(android.graphics.Color.RED);
+                naverPolylineOverlay.setWidth(10);
+                naverPolylineOverlay.setMap(naverMap);
+                Log.d("MapUpdate", "Naver Map polyline updated with " + pathPoints.size() + " points.");
             }
+        } else {
+            if (googlePolyline != null) {
+                googlePolyline.remove();
+                googlePolyline = null;
+                Log.d("MapUpdate", "Removed Google Map polyline (less than 2 points).");
+            }
+            if (naverPolylineOverlay != null) {
+                naverPolylineOverlay.setMap(null);
+                naverPolylineOverlay = null;
+                Log.d("MapUpdate", "Removed Naver Map polyline (less than 2 points).");
+            }
+            Log.d("MapUpdate", "Not enough points (" + pathPoints.size() + ") to draw polyline.");
         }
     }
 }
