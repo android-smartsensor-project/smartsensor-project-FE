@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- res/values/styles.xml -->
+    <style name="Theme.MyApp.Splash" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- 배경색 -->
+        <item name="android:windowSplashScreenBackground">@color/splash_background</item>
+        <!-- 표시할 아이콘 (여기엔 토끼 로고) -->
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/splash_adaptive</item>
+        <!-- 아이콘 뒤 배경색 (adaptive icon 비슷하게 보일 때) -->
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/splash_background</item>
+    </style>
+</resources>
