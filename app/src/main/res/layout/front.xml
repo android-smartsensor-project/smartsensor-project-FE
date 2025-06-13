@@ -35,16 +35,48 @@
             android:layout_centerHorizontal="true"
             android:layout_marginBottom="24dp"/>
 
-        <ProgressBar
-            android:id="@+id/progressBar"
-            style="?android:attr/progressBarStyleHorizontal"
+        <FrameLayout
+            android:id="@+id/progress_container"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:max="10000"
-            android:progress="0"
             android:layout_below="@id/timeTextView"
-            android:layout_marginTop="16dp"
-            android:layout_marginBottom="16dp"/>
+            android:layout_marginTop="64dp"
+            android:layout_marginBottom="16dp">
+
+            <ProgressBar
+                android:id="@+id/progressBar"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:max="10000"
+                android:progress="0"
+                android:layout_gravity="center_vertical"/>
+
+            <ImageView
+                android:id="@+id/imageViewRabbit"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@drawable/front"
+                android:layout_gravity="center_vertical"
+                android:translationX="0dp"
+                android:contentDescription="운동하는 토끼"/>
+
+            <TextView
+                android:id="@+id/textViewStepBubble"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0 걸음"
+                android:textSize="12sp"
+                android:textColor="@android:color/black"
+                android:background="@drawable/bubble_background"
+                android:padding="4dp"
+                android:layout_gravity="center_vertical"
+                android:translationX="0dp"
+                android:translationY="-20dp"
+                android:visibility="visible"/>
+
+        </FrameLayout>
+
 
         <TextView
             android:id="@+id/currentStepsTextView"
@@ -52,7 +84,7 @@
             android:layout_height="wrap_content"
             android:text="0"
             android:layout_alignParentStart="true"
-            android:layout_below="@id/progressBar"
+            android:layout_below="@id/progress_container"
             android:layout_marginStart="8dp"/>
 
         <TextView
@@ -61,7 +93,7 @@
             android:layout_height="wrap_content"
             android:text="10000"
             android:layout_alignParentEnd="true"
-            android:layout_below="@id/progressBar"
+            android:layout_below="@id/progress_container"
             android:layout_marginEnd="8dp"/>
 
         <LinearLayout

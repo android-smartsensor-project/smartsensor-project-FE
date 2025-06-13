@@ -31,6 +31,7 @@ import android.widget.Button;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.ImageView;
 
 import com.google.android.gms.common.api.ResolvableApiException;
 import com.google.android.gms.location.FusedLocationProviderClient;
@@ -46,8 +47,8 @@ import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.Polyline;
 import com.google.android.gms.maps.model.PolylineOptions;
-import com.google.android.gms.tasks.OnFailureListener; // OnFailureListener 임포트 추가!
-import com.google.android.gms.tasks.OnSuccessListener; // OnSuccessListener 임포트 추가!
+import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.location.Priority;
 import com.google.android.gms.maps.UiSettings;
@@ -80,6 +81,9 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
     private Button buttonChangeMap;
     private Button buttonStartExercise;
     private Button buttonEndExercise;
+
+    private ImageView imageViewRabbit;
+    private TextView textViewStepBubble;
 
     private SensorManager sensorManager;
     private Sensor accelerometerSensor;
@@ -140,6 +144,9 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
         buttonStartExercise = findViewById(R.id.buttonStartExercise);
         buttonEndExercise = findViewById(R.id.buttonEndExercise);
 
+        imageViewRabbit = findViewById(R.id.imageViewRabbit);
+        textViewStepBubble = findViewById(R.id.textViewStepBubble);
+
         progressBar.setMax(10000);
         maxGoalTextView.setText(String.valueOf(10000));
 
@@ -174,7 +181,6 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
             buttonStartExercise.setVisibility(View.VISIBLE);
             buttonEndExercise.setVisibility(View.GONE);
         }
-
 
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 
@@ -398,7 +404,6 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
             googleMap.setMyLocationEnabled(true);
             googleMap.getUiSettings().setMyLocationButtonEnabled(true);
 
-            // Google 지도가 켜지자마자 현재 위치를 한 번만 가져와서 카메라 이동
             fusedLocationClient.getLastLocation()
                     .addOnSuccessListener(this, new OnSuccessListener<Location>() {
                         @Override
@@ -475,6 +480,8 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
                 currentDailySteps++;
                 isPeakDetected = false;
                 lastStepTime = currentTime;
+
+                updateRabbitAndBubblePosition();
             }
 
             currentStepsTextView.setText(String.valueOf(currentDailySteps));
@@ -527,6 +534,10 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
         currentStepsTextView.setText(String.valueOf(currentDailySteps));
         progressBar.setProgress(currentDailySteps);
 
+        updateRabbitAndBubblePosition();
+        if (imageViewRabbit != null) imageViewRabbit.setVisibility(View.VISIBLE);
+        if (textViewStepBubble != null) textViewStepBubble.setVisibility(View.VISIBLE);
+
         checkLocationPermissions();
 
         if (buttonStartExercise != null && buttonEndExercise != null) {
@@ -546,5 +557,36 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
         }
 
         Toast.makeText(this, "운동이 종료되었습니다.", Toast.LENGTH_SHORT).show();
+    }
+
+    private void updateRabbitAndBubblePosition() {
+        if (progressBar == null || imageViewRabbit == null || textViewStepBubble == null) {
+            return;
+        }
+
+        final int progressBarWidth = progressBar.getWidth();
+        final int maxProgress = progressBar.getMax();
+        final int currentProgress = progressBar.getProgress();
+
+        if (progressBarWidth <= 0 || maxProgress <= 0) {
+            Log.w("RabbitPosition", "ProgressBar width or max is 0. Cannot update rabbit position.");
+            return;
+        }
+
+        float progressRatio = (float) currentProgress / maxProgress;
+
+        final int rabbitWidth = imageViewRabbit.getWidth();
+        final int bubbleWidth = textViewStepBubble.getWidth();
+
+        float rabbitTranslationX = (progressBarWidth * progressRatio) - (rabbitWidth / 2f);
+
+        float bubbleTranslationX = rabbitTranslationX + (rabbitWidth / 2f) - (bubbleWidth / 2f);
+
+        imageViewRabbit.setTranslationX(rabbitTranslationX);
+        textViewStepBubble.setTranslationX(bubbleTranslationX);
+
+        textViewStepBubble.setText(currentProgress + " 걸음");
+
+        Log.d("RabbitPosition", "Progress: " + currentProgress + ", Width: " + progressBarWidth + ", RabbitX: " + rabbitTranslationX + ", BubbleX: " + bubbleTranslationX);
     }
 }
