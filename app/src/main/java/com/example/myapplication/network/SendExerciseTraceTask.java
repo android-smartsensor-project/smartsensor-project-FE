@@ -18,37 +18,18 @@ import java.util.HashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
- * 백엔드의 POST /auth/verify 엔드포인트로
- * JSON 형식({ "email": "..." })을 보내는 비동기 요청 클래스 (API 31+ 환경용).
- *
- * - AsyncTask 대신 ExecutorService + Handler(메인 스레드) 조합을 사용합니다.
- */
-public class EmailAuthCodeTask {
-    private static final String TAG = "EmailAuthCode";
-
-    private static final String BASE_URL = "http://10.0.2.2:3000";
-    private static final String ENDPOINT = "/auth/verify";
-
+public class SendExerciseTraceTask {
+    private static final String BASE_URL = "http://10.18.220.184:3000";
+    private static final String ENDPOINT = "/exercise/trace";
     private static final ExecutorService executor = Executors.newSingleThreadExecutor();
 
     private static final Handler mainHandler = new Handler(Looper.getMainLooper());
-
 
     public interface Callback {
         void onSuccess(int httpCode, String responseBody);
         void onFailure(String errorMsg);
     }
-
-    /**
-     * 이메일 인증 요청을 비동기로 보냅니다.
-     *
-     * @param email    사용자 이메일 (예: "user@example.com")
-     * @param mode     인증 모드 (예: "signup")
-     * @param authNumber 인증번호
-     * @param callback 성공/실패 결과를 받을 콜백
-     */
-    public static void sendRequest(final String email, final String mode, final String authNumber, final Callback callback) {
+    public static void sendRequest(final String uid, final float velocity, final long date, final long movetime, final SendExerciseTraceTask.Callback callback) {
         executor.execute(() -> {
             HttpURLConnection conn = null;
             try {
@@ -61,9 +42,10 @@ public class EmailAuthCodeTask {
                 conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
 
                 JSONObject jsonBody = new JSONObject();
-                jsonBody.put("email", email);
-                jsonBody.put("mode", mode);
-                jsonBody.put("authNumber", authNumber);
+                jsonBody.put("uid", uid);
+                jsonBody.put("velocity", velocity);
+                jsonBody.put("date", date);
+                jsonBody.put("movetime", movetime);
                 String requestBody = jsonBody.toString();
 
                 OutputStream out = new BufferedOutputStream(conn.getOutputStream());
@@ -98,7 +80,6 @@ public class EmailAuthCodeTask {
                     }
                 });
             } catch (Exception e) {
-                Log.e(TAG, "이메일 인증번호 확인 중 예외 발생", e);
                 final String errMsg = e.getMessage() != null ? e.getMessage() : "Unknown error";
                 mainHandler.post(() -> callback.onFailure(errMsg));
             } finally {

@@ -20,10 +20,6 @@ import android.content.IntentFilter;
 import android.content.IntentSender;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.hardware.Sensor;
-import android.hardware.SensorEvent;
-import android.hardware.SensorEventListener;
-import android.hardware.SensorManager;
 import android.location.Location;
 import android.os.Bundle;
 import android.os.Handler;
@@ -77,7 +73,7 @@ import android.app.PendingIntent;
 import java.util.concurrent.TimeUnit;
 import android.graphics.Color;
 
-public class FrontActivity extends AppCompatActivity implements SensorEventListener, com.google.android.gms.maps.OnMapReadyCallback, com.naver.maps.map.OnMapReadyCallback {
+public class FrontActivity extends AppCompatActivity implements com.google.android.gms.maps.OnMapReadyCallback, com.naver.maps.map.OnMapReadyCallback {
 
     private TextView dateTextView;
     private TextView timeTextView;
@@ -89,16 +85,6 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
     private Button buttonEndExercise;
     private ImageView imageViewRabbit;
     private TextView textViewStepBubble;
-
-    private SensorManager sensorManager;
-    private Sensor accelerometerSensor;
-    private int currentDailySteps = 0;
-    private float[] accelerometerValues = new float[3];
-    private static final double STEP_THRESHOLD = 10.5;
-    private static final double LOW_THRESHOLD = 9.5;
-    private boolean isPeakDetected = false;
-    private long lastStepTime = 0;
-    private static final long MIN_STEP_INTERVAL_NS = 250 * 1000000;
 
     private Handler handler = new Handler();
     private Runnable updateTimeRunnable = new Runnable() {
@@ -135,8 +121,8 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
         @Override
         public void onReceive(Context context, Intent intent) {
             if (ExerciseService.ACTION_STEP_UPDATE.equals(intent.getAction())) {
-                int stepCount = intent.getIntExtra(ExerciseService.EXTRA_STEP_COUNT, 0);
-                updateStepUI(stepCount);
+                float points = intent.getFloatExtra(ExerciseService.EXTRA_POINTS, 0);
+                updateStepUI(points);
             }
         }
     };
@@ -148,8 +134,6 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
                 float lastSpeedKmh = intent.getFloatExtra(ExerciseService.EXTRA_LAST_SPEED_KMH, 0f);
                 long durationMillis = intent.getLongExtra(ExerciseService.EXTRA_DURATION_MILLIS, 0L);
 
-                Log.d("FrontActivity", "운동 종료 데이터 수신. 마지막 속도: " + lastSpeedKmh + " km/h, 운동 시간: " + durationMillis + " ms");
-
                 long hours = TimeUnit.MILLISECONDS.toHours(durationMillis);
                 long minutes = TimeUnit.MILLISECONDS.toMinutes(durationMillis) % 60;
                 long seconds = TimeUnit.MILLISECONDS.toSeconds(durationMillis) % 60;
@@ -157,7 +141,7 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
                 // 여기서 형식 문자열 마지막 부분을 "%02d초"로 수정!
                 String durationString = String.format(Locale.KOREAN, "%02d시간 %02d분 %02d초", hours, minutes, seconds); // <-- 이 부분을 수정했어!
 
-                String message = "총 걸음 수: " + progressBar.getProgress() + "\n" +
+                String message = "적립 포인트: " + progressBar.getProgress() + "\n" +
                         "마지막 속도: " + String.format(Locale.KOREAN, "%.1f km/h", lastSpeedKmh) + "\n" +
                         "운동 시간: " + durationString;
 
@@ -259,14 +243,6 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
             loadMapFragment(savedMapType);
         }
 
-        sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
-        if (sensorManager != null) {
-            accelerometerSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-            if (accelerometerSensor == null) {
-                Toast.makeText(this, "가속도 센서를 찾을 수 없습니다 ㅠㅠ", Toast.LENGTH_LONG).show();
-            }
-        }
-
         updateDateTime();
         textViewStepBubble.setText("준비 중");
     }
@@ -275,10 +251,6 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
     protected void onResume() {
         super.onResume();
         handler.post(updateTimeRunnable);
-
-        if (accelerometerSensor != null) {
-            sensorManager.registerListener(this, accelerometerSensor, SensorManager.SENSOR_DELAY_GAME);
-        }
 
         LocalBroadcastManager.getInstance(this).registerReceiver(stepUpdateReceiver,
                 new IntentFilter(ExerciseService.ACTION_STEP_UPDATE));
@@ -294,10 +266,6 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
         super.onPause();
         handler.removeCallbacks(updateTimeRunnable);
 
-        if (sensorManager != null) {
-            sensorManager.unregisterListener(this);
-        }
-
         LocalBroadcastManager.getInstance(this).unregisterReceiver(stepUpdateReceiver);
         Log.d("FrontActivity", "StepUpdateReceiver unregistered");
 
@@ -308,34 +276,6 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
     @Override
     protected void onDestroy() {
         super.onDestroy();
-    }
-
-    @Override
-    public void onSensorChanged(SensorEvent event) {
-        if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
-            float x = event.values[0];
-            float y = event.values[1];
-            float z = event.values[2];
-
-            double magnitude = Math.sqrt(x * x + y * y + z * z);
-
-            long currentTime = System.nanoTime();
-
-            if (magnitude > STEP_THRESHOLD && !isPeakDetected && (currentTime - lastStepTime > MIN_STEP_INTERVAL_NS)) {
-                isPeakDetected = true;
-            }
-            else if (magnitude < LOW_THRESHOLD && isPeakDetected) {
-                currentDailySteps++;
-                isPeakDetected = false;
-                lastStepTime = currentTime;
-
-                updateStepUI(currentDailySteps);
-            }
-        }
-    }
-
-    @Override
-    public void onAccuracyChanged(Sensor sensor, int accuracy) {
     }
 
     private void updateDateTime() {
@@ -351,11 +291,15 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
         timeTextView.setText(timeString);
     }
 
-    private void updateStepUI(int stepCount) {
-        currentStepsTextView.setText(String.valueOf(stepCount));
-        progressBar.setProgress(stepCount);
-        updateRabbitAndBubblePosition();
-        Log.d("FrontActivity", "UI updated with step count: " + stepCount);
+    private void updateStepUI(float points) {
+        try {
+            currentStepsTextView.setText(String.valueOf(points));
+            progressBar.setProgress((int)points);
+            updateRabbitAndBubblePosition();
+            Log.d("FrontActivity", "UI updated with points: " + points);
+        } catch (Exception e) {
+            Log.e("FrontActivity", "Error: " + e.getMessage());
+        }
     }
 
     private void updateRabbitAndBubblePosition() {

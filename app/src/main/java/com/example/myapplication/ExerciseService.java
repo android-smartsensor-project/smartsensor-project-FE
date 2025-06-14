@@ -27,6 +27,8 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
+import com.example.myapplication.network.SendExerciseTraceTask;
+import com.example.myapplication.utils.JsonUtils;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
@@ -34,11 +36,13 @@ import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.Priority;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 
@@ -49,24 +53,21 @@ public class ExerciseService extends Service implements SensorEventListener {
     public static final String ACTION_START_EXERCISE = "com.example.myapplication.action.START_EXERCISE";
     public static final String ACTION_STOP_EXERCISE = "com.example.myapplication.action.STOP_EXERCISE";
     public static final String ACTION_STEP_UPDATE = "com.example.myapplication.action.STEP_UPDATE";
-    public static final String EXTRA_STEP_COUNT = "extra_step_count";
+    public static final String EXTRA_POINTS = "extra_points";
     public static final String ACTION_EXERCISE_END = "com.example.myapplication.action.EXERCISE_END";
     public static final String EXTRA_LAST_SPEED_KMH = "extra_last_speed_kmh";
     public static final String EXTRA_DURATION_MILLIS = "extra_duration_millis";
 
     private SensorManager sensorManager;
-    private Sensor accelerometerSensor;
+    private Sensor stepCounterSensor;
     private FusedLocationProviderClient fusedLocationClient;
     private LocationRequest locationRequest;
     private LocationCallback locationCallback;
+    private NotificationManager manager;
 
-    private int currentDailySteps = 0;
-    private float[] accelerometerValues = new float[3];
-    private static final double STEP_THRESHOLD = 10.5;
-    private static final double LOW_THRESHOLD = 9.5;
-    private boolean isPeakDetected = false;
+
+    private float dailyPoints = 0;
     private long lastStepTime = 0;
-    private static final long MIN_STEP_INTERVAL_NS = 250 * 1000000;
 
     private Location lastKnownLocation = null;
     private Location previousLocation = null;
@@ -75,24 +76,28 @@ public class ExerciseService extends Service implements SensorEventListener {
     private long startTimeMillis = 0;
     private float lastCalculatedSpeedKmh = 0f;
 
-    private SharedPreferences stepPrefs;
-    private static final String PREFS_NAME = "StepPrefs";
-    private static final String KEY_STEP_COUNT = "stepCount";
+    private SharedPreferences pointsPrefs;
+    private static final String PREFS_NAME = "PointsPrefs";
+    private static final String KEY_POINTS = "points";
     private static final String KEY_LAST_RESET_DATE = "lastResetDate";
-
+    private static final FirebaseAuth mFirebaseAuth = FirebaseAuth.getInstance();
+    private static final FirebaseUser mFirebaseUser = mFirebaseAuth.getCurrentUser();
 
     @Override
     public void onCreate() {
         super.onCreate();
-        Log.d("ExerciseService", "Service created");
-
-        stepPrefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        if (mFirebaseUser == null) {
+            Log.d("ExerciseService", "User is not authenticated. Stopping service.");
+            stopSelf();
+            return;
+        }
+        pointsPrefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 
         checkAndResetDailySteps(); // 서비스 시작 시 날짜 확인 및 걸음 수 초기화
 
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         if (sensorManager != null) {
-            accelerometerSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+            stepCounterSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER);
         }
 
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
@@ -134,10 +139,10 @@ public class ExerciseService extends Service implements SensorEventListener {
         }
 
         createNotificationChannel();
-        Notification notification = buildNotification("운동 기록 중...", "걸음 수: " + currentDailySteps);
+        Notification notification = buildNotification("운동 기록 중...", "적립 포인트: " + dailyPoints);
         startForeground(NOTIFICATION_ID, notification);
 
-        sendStepUpdateBroadcast(currentDailySteps); // 서비스 시작 시 현재 걸음 수 액티비티로 전송
+        sendStepUpdateBroadcast(dailyPoints); // 서비스 시작 시 현재 포인트 액티비티로 전송
 
         return START_STICKY;
     }
@@ -146,8 +151,6 @@ public class ExerciseService extends Service implements SensorEventListener {
     public void onDestroy() {
         super.onDestroy();
         Log.d("ExerciseService", "Service destroyed");
-        stopExerciseTracking();
-        saveStepCount(currentDailySteps); // 서비스 종료 시 걸음 수 저장
     }
 
     @Override
@@ -156,52 +159,50 @@ public class ExerciseService extends Service implements SensorEventListener {
     }
 
     private void checkAndResetDailySteps() {
-        String lastResetDate = stepPrefs.getString(KEY_LAST_RESET_DATE, "");
+        String lastResetDate = pointsPrefs.getString(KEY_LAST_RESET_DATE, "");
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd", Locale.KOREAN);
         String todayDate = sdf.format(new Date());
 
         if (!todayDate.equals(lastResetDate)) {
-            currentDailySteps = 0;
-            saveStepCount(0);
-            stepPrefs.edit().putString(KEY_LAST_RESET_DATE, todayDate).apply();
+            dailyPoints = 0;
+            savePoints(0);
+            pointsPrefs.edit().putString(KEY_LAST_RESET_DATE, todayDate).apply();
             Log.d("ExerciseService", "Daily steps reset for " + todayDate);
         } else {
-            currentDailySteps = stepPrefs.getInt(KEY_STEP_COUNT, 0);
-            Log.d("ExerciseService", "Loaded steps for today (" + todayDate + "): " + currentDailySteps);
+            dailyPoints = pointsPrefs.getFloat(KEY_POINTS, 0);
+            Log.d("ExerciseService", "Loaded steps for today (" + todayDate + "): " + dailyPoints);
         }
     }
 
-    private void saveStepCount(int stepCount) {
-        stepPrefs.edit().putInt(KEY_STEP_COUNT, stepCount).apply();
-        Log.d("ExerciseService", "Step count saved: " + stepCount);
+    private void savePoints(float points) {
+        pointsPrefs.edit().putFloat(KEY_POINTS, points).apply();
+        Log.d("ExerciseService", "Step count saved: " + points);
     }
-
 
     private void startExerciseTracking() {
         Log.d("ExerciseService", "Exercise tracking started");
-        // currentDailySteps는 checkAndResetDailySteps에서 관리
         pathPoints.clear();
         lastKnownLocation = null;
         previousLocation = null;
         startTimeMillis = System.currentTimeMillis();
 
-        if (accelerometerSensor != null) {
-            sensorManager.registerListener(this, accelerometerSensor, SensorManager.SENSOR_DELAY_GAME);
-            Log.d("ExerciseService", "Accelerometer listener registered");
+        if (stepCounterSensor != null) {
+            sensorManager.registerListener(this, stepCounterSensor, SensorManager.SENSOR_DELAY_GAME);
+            Log.d("ExerciseService", "Step counter listener registered");
         } else {
-            Toast.makeText(this, "가속도 센서를 찾을 수 없습니다 ㅠㅠ 걸음 수 기록 불가", Toast.LENGTH_LONG).show();
-            Log.w("ExerciseService", "Accelerometer sensor not found");
+            Toast.makeText(this, "걷기 센서를 찾을 수 없습니다 ㅠㅠ 적립 불가", Toast.LENGTH_LONG).show();
+            Log.w("ExerciseService", "Step counter sensor not found");
         }
 
         startLocationUpdates();
-        updateNotification("운동 기록 중...", "걸음 수: " + currentDailySteps);
+        updateNotification("운동 기록 중...", "포인트: " + dailyPoints);
     }
 
     private void stopExerciseTracking() {
         Log.d("ExerciseService", "Exercise tracking stopped");
         if (sensorManager != null) {
             sensorManager.unregisterListener(this);
-            Log.d("ExerciseService", "Accelerometer listener unregistered");
+            Log.d("ExerciseService", "Step counter listener unregistered");
         }
         stopLocationUpdates();
 
@@ -210,7 +211,7 @@ public class ExerciseService extends Service implements SensorEventListener {
 
         sendExerciseEndBroadcast(lastCalculatedSpeedKmh, durationMillis);
 
-        updateNotification("운동 기록 종료", "총 걸음 수: " + currentDailySteps);
+        updateNotification("운동 기록 종료", "총 포인트: " + dailyPoints);
 
         pathPoints.clear();
         lastKnownLocation = null;
@@ -218,7 +219,8 @@ public class ExerciseService extends Service implements SensorEventListener {
         lastCalculatedSpeedKmh = 0f;
         startTimeMillis = 0;
 
-        saveStepCount(currentDailySteps); // 운동 종료 시 걸음 수 저장
+        savePoints(dailyPoints); // 운동 종료 시 걸음 수 저장
+        manager.cancel(NOTIFICATION_ID);
     }
 
     @SuppressLint("MissingPermission")
@@ -236,33 +238,16 @@ public class ExerciseService extends Service implements SensorEventListener {
         Log.d("ExerciseService", "Location updates stopped");
     }
 
-
     @Override
     public void onSensorChanged(SensorEvent event) {
-        if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
-            float x = event.values[0];
-            float y = event.values[1];
-            float z = event.values[2];
-
-            double magnitude = Math.sqrt(x * x + y * y + z * z);
-
-            long currentTime = System.nanoTime();
-
-            if (magnitude > STEP_THRESHOLD && !isPeakDetected && (currentTime - lastStepTime > MIN_STEP_INTERVAL_NS)) {
-                isPeakDetected = true;
-            }
-            else if (magnitude < LOW_THRESHOLD && isPeakDetected) {
-                currentDailySteps++;
-                isPeakDetected = false;
-                lastStepTime = currentTime;
-
-                saveStepCount(currentDailySteps); // 걸음 수 증가 시 저장
-
+        try {
+            if (event.sensor.getType() == Sensor.TYPE_STEP_COUNTER) {
                 if (lastKnownLocation != null) {
                     if (previousLocation == null) {
-                        previousLocation = lastKnownLocation;
-                        Log.d("SpeedCalculation", "운동 시작 후 첫 위치 저장.");
-                    } else {
+                        Toast.makeText(ExerciseService.this, "첫 위치 저장", Toast.LENGTH_LONG).show();
+                    }
+                    if (previousLocation != null) {
+                        long currentTime = System.currentTimeMillis();
                         float distance = previousLocation.distanceTo(lastKnownLocation);
                         long timeDiffMillis = lastKnownLocation.getTime() - previousLocation.getTime();
 
@@ -270,17 +255,50 @@ public class ExerciseService extends Service implements SensorEventListener {
                             float speedMps = distance / (timeDiffMillis / 1000f);
                             float speedKmh = speedMps * 3.6f;
                             lastCalculatedSpeedKmh = speedKmh;
-                            Log.d("ExerciseService", "걸음 감지! 속도: " + speedKmh + " km/h");
+                            SendExerciseTraceTask.sendRequest(mFirebaseUser.getUid(), speedKmh, currentTime, currentTime - lastStepTime, new SendExerciseTraceTask.Callback() {
+                                @Override
+                                public void onSuccess(int httpCode, String responseBody) {
+                                    Log.d("ExerciseService", "Exercise trace sent successfully");
+                                    HashMap<String, Object> body = JsonUtils.jsonToMap(responseBody);
+                                    if (body == null) {
+                                        Toast.makeText(ExerciseService.this, "Exercise trace sent successfully", Toast.LENGTH_LONG).show();
+                                        return ;
+                                    }
+                                    Object data = body.get("data");
+                                    HashMap<String, Object> trace = JsonUtils.jsonToMap(data.toString());
+                                    Object p = trace.get("points");
+                                    float points;
+                                    if (p instanceof Number) {
+                                        points = ((Number)p).floatValue();
+                                    } else if (p instanceof String) {
+                                        // 숫자 문자열이라면 파싱
+                                        points = Float.parseFloat((String)p);
+                                    } else {
+                                        // 예외 처리나 기본값
+                                        throw new IllegalStateException("points 타입이 Number/String이 아닙니다: " + p);
+                                    }
+                                    dailyPoints += points;
+                                    lastStepTime = currentTime;
+                                }
+
+                                @Override
+                                public void onFailure(String errorMsg) {
+                                    Log.e("ExerciseService", "Failed to send exercise trace: " + errorMsg);
+                                    Toast.makeText(ExerciseService.this, "데이터 전송을 실패했습니다. 기기에 활동 기록을 임시로 보관하겠습니다", Toast.LENGTH_LONG).show();
+                                    lastStepTime = currentTime;
+                                }
+                            });
                         }
-                        previousLocation = lastKnownLocation;
                     }
+                    previousLocation = lastKnownLocation;
+                    sendStepUpdateBroadcast(dailyPoints);
+                    updateNotification("운동 기록 중...", "적립 포인트: " + dailyPoints);
                 } else {
                     Log.w("SpeedCalculation", "lastKnownLocation이 null입니다. 위치 정보 수신 대기 중.");
                 }
-
-                sendStepUpdateBroadcast(currentDailySteps);
-                updateNotification("운동 기록 중...", "걸음 수: " + currentDailySteps);
             }
+        } catch (Exception e) {
+            Log.e("ExerciseService", "Error: " + e.getMessage());
         }
     }
 
@@ -295,9 +313,11 @@ public class ExerciseService extends Service implements SensorEventListener {
                     "운동 기록 서비스 채널",
                     NotificationManager.IMPORTANCE_DEFAULT
             );
-            NotificationManager manager = getSystemService(NotificationManager.class);
+            manager = getSystemService(NotificationManager.class);
             if (manager != null) {
                 manager.createNotificationChannel(serviceChannel);
+            } else {
+                Toast.makeText(this, "NotificationManager is null", Toast.LENGTH_SHORT).show();
             }
         }
     }
@@ -327,11 +347,11 @@ public class ExerciseService extends Service implements SensorEventListener {
         }
     }
 
-    private void sendStepUpdateBroadcast(int stepCount) {
+    private void sendStepUpdateBroadcast(float points) {
         Intent intent = new Intent(ACTION_STEP_UPDATE);
-        intent.putExtra(EXTRA_STEP_COUNT, stepCount);
+        intent.putExtra(EXTRA_POINTS, points);
         LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
-        Log.d("ExerciseService", "Step update broadcast sent: " + stepCount);
+        Log.d("ExerciseService", "Step update broadcast sent: " + points);
     }
 
     private void sendExerciseEndBroadcast(float lastSpeedKmh, long durationMillis) {
