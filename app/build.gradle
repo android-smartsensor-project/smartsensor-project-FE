@@ -46,4 +46,5 @@ dependencies {
     implementation 'com.google.firebase:firebase-analytics'
     implementation 'com.google.firebase:firebase-database'
     implementation 'com.naver.maps:map-sdk:3.21.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.0.0-beta3'
 }

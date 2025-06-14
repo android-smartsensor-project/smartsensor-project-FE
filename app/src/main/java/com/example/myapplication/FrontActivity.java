@@ -75,6 +75,7 @@ import java.lang.Math;
 import android.location.Location;
 import android.app.PendingIntent;
 import java.util.concurrent.TimeUnit;
+import android.graphics.Color;
 
 public class FrontActivity extends AppCompatActivity implements SensorEventListener, com.google.android.gms.maps.OnMapReadyCallback, com.naver.maps.map.OnMapReadyCallback {
 
@@ -153,18 +154,20 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
                 long minutes = TimeUnit.MILLISECONDS.toMinutes(durationMillis) % 60;
                 long seconds = TimeUnit.MILLISECONDS.toSeconds(durationMillis) % 60;
 
-                String durationString = String.format(Locale.KOREAN, "%02d시간 %02d분 %02초", hours, minutes, seconds);
+                // 여기서 형식 문자열 마지막 부분을 "%02d초"로 수정!
+                String durationString = String.format(Locale.KOREAN, "%02d시간 %02d분 %02d초", hours, minutes, seconds); // <-- 이 부분을 수정했어!
 
                 String message = "총 걸음 수: " + progressBar.getProgress() + "\n" +
                         "마지막 속도: " + String.format(Locale.KOREAN, "%.1f km/h", lastSpeedKmh) + "\n" +
                         "운동 시간: " + durationString;
 
-                new AlertDialog.Builder(context)
+                new AlertDialog.Builder(FrontActivity.this)
                         .setTitle("운동 종료!")
                         .setMessage(message)
                         .setPositiveButton("확인", new DialogInterface.OnClickListener() {
                             public void onClick(DialogInterface dialog, int which) {
                                 dialog.dismiss();
+                                resetExerciseUI();
                             }
                         })
                         .setIcon(android.R.drawable.ic_dialog_info)
@@ -320,7 +323,8 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
 
             if (magnitude > STEP_THRESHOLD && !isPeakDetected && (currentTime - lastStepTime > MIN_STEP_INTERVAL_NS)) {
                 isPeakDetected = true;
-            } else if (magnitude < LOW_THRESHOLD && isPeakDetected) {
+            }
+            else if (magnitude < LOW_THRESHOLD && isPeakDetected) {
                 currentDailySteps++;
                 isPeakDetected = false;
                 lastStepTime = currentTime;
@@ -419,14 +423,7 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
         serviceIntent.setAction(ExerciseService.ACTION_STOP_EXERCISE);
         startService(serviceIntent);
 
-        buttonStartExercise.setVisibility(View.VISIBLE);
-        buttonEndExercise.setVisibility(View.GONE);
-
-        textViewStepBubble.setText("운동 종료");
-        updateStepUI(0);
-
-        pathPoints.clear();
-        updateMapPolyline();
+        Toast.makeText(this, "운동 종료 중...", Toast.LENGTH_SHORT).show();
     }
 
     private void checkRequiredPermissions() {
@@ -663,7 +660,7 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
                 }
                 List<com.naver.maps.geometry.LatLng> naverPathPoints = new ArrayList<>();
                 for (com.google.android.gms.maps.model.LatLng googleLatLng : pathPoints) {
-                    naverPathPoints.add(new com.naver.maps.geometry.LatLng(googleLatLng.latitude, googleLatLng.longitude)); // 수정된 부분!
+                    naverPathPoints.add(new com.naver.maps.geometry.LatLng(googleLatLng.latitude, googleLatLng.longitude));
                 }
                 naverPolylineOverlay = new PolylineOverlay();
                 naverPolylineOverlay.setCoords(naverPathPoints);
@@ -685,5 +682,17 @@ public class FrontActivity extends AppCompatActivity implements SensorEventListe
             }
             Log.d("MapUpdate", "Not enough points (" + pathPoints.size() + ") to draw polyline.");
         }
+    }
+
+    private void resetExerciseUI() {
+        if (buttonStartExercise != null && buttonEndExercise != null) {
+            buttonStartExercise.setVisibility(View.VISIBLE);
+            buttonEndExercise.setVisibility(View.GONE);
+        }
+        textViewStepBubble.setText("운동 종료");
+        updateStepUI(0);
+        pathPoints.clear();
+        updateMapPolyline();
+        Log.d("FrontActivity", "Exercise UI reset.");
     }
 }
