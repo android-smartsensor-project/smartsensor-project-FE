@@ -75,6 +75,7 @@ public class SignUp3Activity extends AppCompatActivity {
                                 userInfo.setPassword(password);
                                 userInfo.setName(name);
                                 userInfo.setPhone(phone);
+                                userInfo.setBirth(birth);
                                 database.getReference("users")
                                         .child(user.getUid())
                                         .setValue(userInfo).addOnSuccessListener(aVoid -> {
