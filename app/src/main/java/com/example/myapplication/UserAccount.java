@@ -10,40 +10,52 @@ public class UserAccount {
     private String password;
     private String name;
     private String phone;
+    private String birth;
+    private String sex;
+    private float weight;
 
     // 3) 필드별 getter / setter
     public String getIdToken() {
-        return idToken;
+        return this.idToken;
     }
     public void setIdToken(String idToken) {
         this.idToken = idToken;
     }
 
     public String getEmailId() {
-        return emailId;
+        return this.emailId;
     }
     public void setEmailId(String emailId) {
         this.emailId = emailId;
     }
 
     public String getPassword() {
-        return password;
+        return this.password;
     }
     public void setPassword(String password) {
         this.password = password;
     }
 
     public String getName() {
-        return name;
+        return this.name;
     }
     public void setName(String name) {
         this.name = name;
     }
 
     public String getPhone() {
-        return phone;
+        return this.phone;
     }
     public void setPhone(String phone) {
         this.phone = phone;
     }
+
+    public String getBirth() { return this.birth; }
+    public void setBirth(String birth) { this.birth = birth; }
+
+    public String getSex() { return this.sex; }
+    public void setSex(String sex) { this.sex = sex; }
+
+    public Float getWeight() { return weight; }
+    public void setWeight(Float weight) { this.weight = weight; }
 }

@@ -5,10 +5,15 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import android.annotation.SuppressLint;
 import android.content.Intent;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
+import android.view.ViewGroup;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.Spinner;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.example.myapplication.utils.InputValidator;
@@ -29,6 +34,8 @@ public class SignUp3Activity extends AppCompatActivity {
     private TextInputEditText editTextBirth;
     private TextInputEditText editTextPhone;
     private Button buttonSignUp;
+    private Spinner spinner;
+    private TextInputEditText editTextWeight;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -41,6 +48,39 @@ public class SignUp3Activity extends AppCompatActivity {
         editTextBirth = findViewById(R.id.editTextBirth);
         editTextPhone = findViewById(R.id.editTextPhone);
         buttonSignUp = findViewById(R.id.buttonSignUp);
+        spinner = findViewById(R.id.spinnerGender);
+
+        ArrayAdapter<CharSequence> adapter = ArrayAdapter.createFromResource(
+                this,
+                R.array.gender_array,
+                android.R.layout.simple_spinner_item
+        );
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+// 첫 항목을 비활성화
+        spinner.setAdapter(new ArrayAdapter<CharSequence>(this,
+                android.R.layout.simple_spinner_item, getResources().getStringArray(R.array.gender_array)) {
+            @Override
+            public boolean isEnabled(int position) {
+                // position 0 은 플레이스홀더이므로 선택 불가
+                return position != 0;
+            }
+            @Override
+            public View getDropDownView(int position, View convertView, ViewGroup parent) {
+                View v = super.getDropDownView(position, convertView, parent);
+                TextView tv = (TextView) v;
+                if (position == 0) {
+                    // hint 스타일로 회색 텍스트
+                    tv.setTextColor(Color.GRAY);
+                } else {
+                    tv.setTextColor(Color.BLACK);
+                }
+                return v;
+            }
+        });
+        spinner.setSelection(0);  // 디폴트로 “성별” 보여주기
+
+
+        editTextWeight = findViewById(R.id.editTextWeight);
 
         if (buttonSignUp != null) {
             buttonSignUp.setOnClickListener(new View.OnClickListener() {
@@ -58,6 +98,8 @@ public class SignUp3Activity extends AppCompatActivity {
                     String confirmPassword = editTextConfirmPassword.getText().toString();
                     String birth = editTextBirth.getText().toString();
                     String phone = editTextPhone.getText().toString();
+                    String sex = spinner.getSelectedItem().toString();
+                    String weight = editTextWeight.getText().toString();
 
                     if (!checkUserInfoValidation(name, password, confirmPassword, birth, phone)) {
                         return;
@@ -74,7 +116,10 @@ public class SignUp3Activity extends AppCompatActivity {
                                 userInfo.setEmailId(email);
                                 userInfo.setPassword(password);
                                 userInfo.setName(name);
+                                userInfo.setBirth(birth);
                                 userInfo.setPhone(phone);
+                                userInfo.setSex(sex.equals("남자") ? "M" : "F");
+                                userInfo.setWeight(Float.parseFloat(weight));
                                 database.getReference("users")
                                         .child(user.getUid())
                                         .setValue(userInfo).addOnSuccessListener(aVoid -> {
@@ -118,6 +163,10 @@ public class SignUp3Activity extends AppCompatActivity {
         }
         if (!InputValidator.isValidPhoneNumber(phone)) {
             Toast.makeText(SignUp3Activity.this, "올바른 전화번호를 입력해주세요.(01000000000)", Toast.LENGTH_LONG).show();
+            return false;
+        }
+        if (spinner.getSelectedItemPosition() == 0) {
+            Toast.makeText(SignUp3Activity.this, "성별을 선택해주세요.", Toast.LENGTH_LONG).show();
             return false;
         }
         return true;

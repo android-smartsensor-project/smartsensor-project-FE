@@ -1,3 +1,12 @@
 <resources>
     <string name="app_name">My Application</string>
+    <!-- Spinner prompt -->
+    <string name="gender_prompt">성별 선택</string>
+
+    <!-- Spinner 항목 -->
+    <string-array name="gender_array">
+        <item>성별</item>
+        <item>남자</item>
+        <item>여자</item>
+    </string-array>
 </resources>
