@@ -19,7 +19,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class SendExerciseTraceTask {
-    private static final String BASE_URL = "http://10.18.220.184:3000";
+//    private static final String BASE_URL = "http://10.18.220.184:3000"; // 안드로이드 기기에서 테스트할 때, 호스트에 연결된 네트워크 IP 사용
+    private static final String BASE_URL = "http://10.0.2.2:3000"; // 안드로이드 스튜디오 가상 애뮬레이터(AVD)를 사용할 때는 10.0.2.2 사용
     private static final String ENDPOINT = "/exercise/trace";
     private static final ExecutorService executor = Executors.newSingleThreadExecutor();
 
