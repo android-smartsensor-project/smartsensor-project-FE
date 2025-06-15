@@ -20,6 +20,8 @@ import android.content.IntentFilter;
 import android.content.IntentSender;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.content.res.ColorStateList;
+import android.graphics.Color;
 import android.location.Location;
 import android.os.Bundle;
 import android.os.Handler;
@@ -52,6 +54,8 @@ import com.google.android.gms.tasks.Task;
 import com.google.android.gms.location.Priority;
 import com.google.android.gms.maps.UiSettings;
 
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
 import com.naver.maps.map.MapFragment;
 import com.naver.maps.map.NaverMap;
 import com.naver.maps.map.OnMapReadyCallback;
@@ -61,6 +65,8 @@ import com.naver.maps.map.LocationTrackingMode;
 import com.naver.maps.map.util.FusedLocationSource;
 import com.naver.maps.map.CameraUpdate;
 
+import org.json.JSONObject;
+
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -68,13 +74,18 @@ import java.util.List;
 import java.util.Locale;
 import java.util.TimeZone;
 import java.lang.Math;
-import android.location.Location;
-import android.app.PendingIntent;
 import java.util.concurrent.TimeUnit;
-import android.graphics.Color;
+
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 
 public class FrontActivity extends AppCompatActivity implements com.google.android.gms.maps.OnMapReadyCallback, com.naver.maps.map.OnMapReadyCallback {
 
+    private TextView additionalPointsTextView;
+    private ColorStateList defaultProgressTint;
+    private OkHttpClient httpClient = new OkHttpClient();
+    private static final String BASE_URL = "http://10.18.220.184:3000";
     private TextView dateTextView;
     private TextView timeTextView;
     private TextView currentStepsTextView;
@@ -181,6 +192,7 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
         currentStepsTextView = findViewById(R.id.currentStepsTextView);
         maxGoalTextView = findViewById(R.id.maxGoalTextView);
         progressBar = findViewById(R.id.progressBar);
+        additionalPointsTextView = findViewById(R.id.additionalPointsTextView);
         buttonChangeMap = findViewById(R.id.buttonChangeMap);
         buttonStartExercise = findViewById(R.id.buttonStartExercise);
         buttonEndExercise = findViewById(R.id.buttonEndExercise);
@@ -189,6 +201,7 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
         updateButtonsByServiceState();
 
         progressBar.setMax(10000);
+        defaultProgressTint = progressBar.getProgressTintList();
         maxGoalTextView.setText(String.valueOf(10000));
 
         if (buttonChangeMap != null) {
@@ -262,6 +275,7 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
         super.onResume();
         updateButtonsByServiceState();
         handler.post(updateTimeRunnable);
+        fetchDailyPoints();
 
         LocalBroadcastManager.getInstance(this).registerReceiver(stepUpdateReceiver,
                 new IntentFilter(ExerciseService.ACTION_STEP_UPDATE));
@@ -314,11 +328,38 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
             currentStepsTextView.setText(String.valueOf(points));
             progressBar.setProgress((int)points);
             updateRabbitAndBubblePosition();
+            updateProgressUI(points);
             Log.d("FrontActivity", "UI updated with points: " + points);
         } catch (Exception e) {
             Log.e("FrontActivity", "Error: " + e.getMessage());
         }
     }
+
+    private void updateProgressUI(float points) {
+        int max = progressBar.getMax();
+        if (points >= max) {
+            // 1만점 이상
+            progressBar.setProgress(max);
+            progressBar.setProgressTintList(ColorStateList.valueOf(Color.YELLOW));
+            // 좌측 텍스트뷰 숨김
+            currentStepsTextView.setVisibility(View.GONE);
+            // 추가 포인트(초과분)만 아래 중앙에 표시
+            int extra = (int) points - max;
+            additionalPointsTextView.setText(String.valueOf(extra));
+            additionalPointsTextView.setVisibility(View.VISIBLE);
+        } else {
+            // 1만점 미만
+            progressBar.setProgress((int)points);
+            progressBar.setProgressTintList(defaultProgressTint);
+            // 좌측에 현재 포인트 표시
+            currentStepsTextView.setText(String.valueOf((int) points));
+            currentStepsTextView.setVisibility(View.VISIBLE);
+            // 추가 포인트 뷰는 숨김
+            additionalPointsTextView.setVisibility(View.GONE);
+        }
+        updateRabbitAndBubblePosition();
+    }
+
 
     private void updateRabbitAndBubblePosition() {
         if (progressBar == null || imageViewRabbit == null || textViewStepBubble == null) {
@@ -663,9 +704,31 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
             buttonEndExercise.setVisibility(View.GONE);
         }
         textViewStepBubble.setText("운동 종료");
-        updateStepUI(0);
+        fetchDailyPoints();
+
         pathPoints.clear();
         updateMapPolyline();
         Log.d("FrontActivity", "Exercise UI reset.");
+    }
+
+    private void fetchDailyPoints() {
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null) return;
+        String uid = user.getUid();
+        new Thread(() -> {
+            Request req = new Request.Builder()
+                    .url(BASE_URL + "/exercise/points/" + uid)
+                    .get()
+                    .build();
+            try (Response resp = httpClient.newCall(req).execute()) {
+                if (!resp.isSuccessful()) return;
+                JSONObject root = new JSONObject(resp.body().string());
+                if (root.optInt("statusCode", resp.code()) != 200) return;
+                float pts = (float) root.getJSONObject("data").getDouble("dailyPoints");
+                runOnUiThread(() -> updateStepUI(pts));
+            } catch (Exception e) {
+                Log.e("FrontActivity", "fetchDailyPoints error", e);
+            }
+        }).start();
     }
 }

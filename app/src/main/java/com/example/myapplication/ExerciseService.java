@@ -321,6 +321,7 @@ public class ExerciseService extends Service implements SensorEventListener {
                 // UI 토스트·노티·저장·종료는 이곳에서 한 번만
                 servicePrefs.edit().putBoolean(KEY_RUNNING, false).apply();
                 savePoints(dailyPoints);
+                sendStepUpdateBroadcast(dailyPoints);
                 getSystemService(NotificationManager.class)
                         .cancel(NOTIFICATION_ID);
                 stopSelf();
