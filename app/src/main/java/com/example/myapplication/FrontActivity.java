@@ -119,6 +119,14 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
     private FusedLocationSource naverLocationSource;
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1000;
 
+    private BroadcastReceiver startReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context ctx, Intent intent) {
+            // prefs는 이미 true로 바뀌어 있으므로
+            updateButtonsByServiceState();
+        }
+    };
+
     private BroadcastReceiver stepUpdateReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -133,28 +141,27 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
         @Override
         public void onReceive(Context context, Intent intent) {
             if (ExerciseService.ACTION_EXERCISE_END.equals(intent.getAction())) {
-                float lastSpeedKmh = intent.getFloatExtra(ExerciseService.EXTRA_LAST_SPEED_KMH, 0f);
-                long durationMillis = intent.getLongExtra(ExerciseService.EXTRA_DURATION_MILLIS, 0L);
+                float avgSpeed       = intent.getFloatExtra(ExerciseService.EXTRA_AVG_SPEED, 0f);
+                float sessionPoints  = intent.getFloatExtra(ExerciseService.EXTRA_SESSION_POINTS, 0f);
+                float kcal           = intent.getFloatExtra(ExerciseService.EXTRA_KCAL, 0f);
+                long  durationMillis = intent.getLongExtra(ExerciseService.EXTRA_DURATION_MILLIS, 0L);
 
-                long hours = TimeUnit.MILLISECONDS.toHours(durationMillis);
+                long hours   = TimeUnit.MILLISECONDS.toHours(durationMillis);
                 long minutes = TimeUnit.MILLISECONDS.toMinutes(durationMillis) % 60;
                 long seconds = TimeUnit.MILLISECONDS.toSeconds(durationMillis) % 60;
+                String timeStr = String.format(Locale.KOREAN, "%02d시간 %02d분 %02d초", hours, minutes, seconds);
 
-                // 여기서 형식 문자열 마지막 부분을 "%02d초"로 수정!
-                String durationString = String.format(Locale.KOREAN, "%02d시간 %02d분 %02d초", hours, minutes, seconds); // <-- 이 부분을 수정했어!
-
-                String message = "적립 포인트: " + progressBar.getProgress() + "\n" +
-                        "마지막 속도: " + String.format(Locale.KOREAN, "%.1f km/h", lastSpeedKmh) + "\n" +
-                        "운동 시간: " + durationString;
-
+                String message =
+                        "획득 포인트: " + sessionPoints + "\n" +
+                                "평균 속도: "   + String.format(Locale.KOREAN, "%.1f km/h", avgSpeed) + "\n" +
+                                "소모 칼로리: " + String.format(Locale.KOREAN, "%.0f kcal", kcal) + "\n" +
+                                "운동 시간: "  + timeStr;
                 new AlertDialog.Builder(FrontActivity.this)
-                        .setTitle("운동 종료!")
+                        .setTitle("운동 종료")
                         .setMessage(message)
-                        .setPositiveButton("확인", new DialogInterface.OnClickListener() {
-                            public void onClick(DialogInterface dialog, int which) {
-                                dialog.dismiss();
-                                resetExerciseUI();
-                            }
+                        .setPositiveButton("확인", (d, w) -> {
+                            d.dismiss();
+                            resetExerciseUI();
                         })
                         .setIcon(android.R.drawable.ic_dialog_info)
                         .show();
@@ -263,6 +270,10 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
         LocalBroadcastManager.getInstance(this).registerReceiver(exerciseEndReceiver,
                 new IntentFilter(ExerciseService.ACTION_EXERCISE_END));
         Log.d("FrontActivity", "ExerciseEndReceiver registered");
+
+        LocalBroadcastManager.getInstance(this)
+                .registerReceiver(startReceiver,
+                        new IntentFilter("com.example.myapplication.action.EXERCISE_STARTED"));
     }
 
     @Override
@@ -275,6 +286,9 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
 
         LocalBroadcastManager.getInstance(this).unregisterReceiver(exerciseEndReceiver);
         Log.d("FrontActivity", "ExerciseEndReceiver unregistered");
+
+        LocalBroadcastManager.getInstance(this)
+                .unregisterReceiver(startReceiver);
     }
 
     @Override
@@ -373,13 +387,8 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
         serviceIntent.setAction(ExerciseService.ACTION_START_EXERCISE);
         ContextCompat.startForegroundService(this, serviceIntent);
 
-        Toast.makeText(this, "운동 시작!", Toast.LENGTH_SHORT).show();
-        buttonStartExercise.setVisibility(View.GONE);
-        buttonEndExercise.setVisibility(View.VISIBLE);
         pathPoints.clear();
         updateMapPolyline();
-
-        textViewStepBubble.setText("운동 시작!");
     }
 
     private void endExercise() {

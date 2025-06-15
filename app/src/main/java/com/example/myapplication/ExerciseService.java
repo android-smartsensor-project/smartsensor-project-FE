@@ -1,5 +1,7 @@
 package com.example.myapplication;
 
+import static android.content.ContentValues.TAG;
+
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Notification;
@@ -17,6 +19,7 @@ import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.location.Location;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.util.Log;
@@ -39,6 +42,9 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -48,9 +54,17 @@ import java.util.List;
 import java.util.Locale;
 
 import okhttp3.Call;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
 import okhttp3.Response;
 
 public class ExerciseService extends Service implements SensorEventListener {
+
+    private static final String BASE_URL = "http://10.18.220.184:3000";  // 실제 엔드포인트
+    private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
+    private final OkHttpClient httpClient = new OkHttpClient();
 
     private static final String CHANNEL_ID = "ExerciseServiceChannel";
     private static final int NOTIFICATION_ID = 1;
@@ -63,6 +77,10 @@ public class ExerciseService extends Service implements SensorEventListener {
     public static final String EXTRA_DURATION_MILLIS = "extra_duration_millis";
     private static final String PREFS_SERVICE = "ExerciseServicePrefs";
     private static final String KEY_RUNNING = "isServiceRunning";
+    public static final String EXTRA_AVG_SPEED       = "extra_avg_speed";
+    public static final String EXTRA_SESSION_POINTS = "extra_session_points";
+    public static final String EXTRA_KCAL            = "extra_kcal";
+    private float pointsAtSessionStart;
     private SharedPreferences servicePrefs;
 
 
@@ -136,20 +154,18 @@ public class ExerciseService extends Service implements SensorEventListener {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.d("ExerciseService", "Service started");
+        createNotificationChannel();
+        startForeground(NOTIFICATION_ID,
+                buildNotification("운동 기록 중...", "포인트: " + dailyPoints));
 
         if (intent != null) {
             String action = intent.getAction();
             if (ACTION_START_EXERCISE.equals(action)) {
-                startExerciseTracking();
+                syncStartExercise();
             } else if (ACTION_STOP_EXERCISE.equals(action)) {
                 stopExerciseTracking();
-                stopSelf();
             }
         }
-
-        createNotificationChannel();
-        Notification notification = buildNotification("운동 기록 중...", "적립 포인트: " + dailyPoints);
-        startForeground(NOTIFICATION_ID, notification);
 
         sendStepUpdateBroadcast(dailyPoints); // 서비스 시작 시 현재 포인트 액티비티로 전송
 
@@ -188,6 +204,50 @@ public class ExerciseService extends Service implements SensorEventListener {
         Log.d("ExerciseService", "Step count saved: " + points);
     }
 
+    /** 운동 시작 API를 동기 호출하고, HTTP 상태에 따라 로그/서비스 중단 처리 */
+    private void syncStartExercise() {
+        new Thread(() -> {
+            RequestBody body = RequestBody.create(
+                    "{\"uid\":\"" + mFirebaseUser.getUid() + "\"}", JSON);
+            Request req = new Request.Builder()
+                    .url(BASE_URL + "/exercise/start")
+                    .post(body)
+                    .build();
+
+            try (Response resp = httpClient.newCall(req).execute()) {
+                // 1) 본문 전체를 문자열로 읽어두고
+                String respBodyStr = resp.body().string();
+
+                // 2) JSONObject로 파싱
+                JSONObject root = new JSONObject(respBodyStr);
+                int apiStatus = root.optInt("statusCode", resp.code());
+
+                if (apiStatus == 200) {
+                    // 3) 본문에서 message나 data가 필요하면 추가로 읽을 수 있음
+                    new Handler(Looper.getMainLooper()).post(this::startExerciseTracking);
+                } else {
+                    String msg = root.optString("message",
+                            "운동 시작 실패: HTTP " + resp.code());
+                    Log.e(TAG, msg);
+                    new Handler(Looper.getMainLooper()).post(() ->
+                            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+                    );
+                    getSystemService(NotificationManager.class)
+                            .cancel(NOTIFICATION_ID);
+                    stopSelf();
+                }
+            } catch (IOException | JSONException e) {
+                Log.e(TAG, "운동 시작 API 호출 예외", e);
+                new Handler(Looper.getMainLooper()).post(() ->
+                    Toast.makeText(this, "운동 시작 중 네트워크 오류가 발생했습니다.", Toast.LENGTH_LONG).show()
+                );
+                getSystemService(NotificationManager.class)
+                        .cancel(NOTIFICATION_ID);
+                stopSelf();
+            }
+        }).start();
+    }
+
     private void startExerciseTracking() {
         Log.d("ExerciseService", "Exercise tracking started");
         pathPoints.clear();
@@ -204,8 +264,13 @@ public class ExerciseService extends Service implements SensorEventListener {
         }
 
         startLocationUpdates();
+        pointsAtSessionStart = dailyPoints;    // <- 세션 시작 시점 저장
         servicePrefs.edit().putBoolean(KEY_RUNNING, true).apply();
         updateNotification("운동 기록 중...", "포인트: " + dailyPoints);
+
+        // **추가**: 시작 성공 알림 브로드캐스트
+        Intent started = new Intent("com.example.myapplication.action.EXERCISE_STARTED");
+        LocalBroadcastManager.getInstance(this).sendBroadcast(started);
     }
 
     private void stopExerciseTracking() {
@@ -217,10 +282,50 @@ public class ExerciseService extends Service implements SensorEventListener {
         stopLocationUpdates();
         servicePrefs.edit().putBoolean(KEY_RUNNING, false).apply();
 
-        long endTimeMillis = System.currentTimeMillis();
-        long durationMillis = endTimeMillis - startTimeMillis;
+        long duration = System.currentTimeMillis() - startTimeMillis;
+        float sessionPts = dailyPoints - pointsAtSessionStart;
 
-        sendExerciseEndBroadcast(lastCalculatedSpeedKmh, durationMillis);
+        // 3) 서버에 종료 API 동기 호출 (별도 스레드)
+        // 서버 종료 API + 브로드캐스트 + 후처리
+        new Thread(() -> {
+            RequestBody body = RequestBody.create(
+                    "{\"uid\":\"" + mFirebaseUser.getUid() + "\"}", JSON);
+            Request req = new Request.Builder()
+                    .url(BASE_URL + "/exercise/finish")
+                    .post(body)
+                    .build();
+
+            try (Response resp = httpClient.newCall(req).execute()) {
+                if (!resp.isSuccessful()) {
+                    Log.e(TAG, "finish error: " + resp.code());
+                    Log.e(TAG, "finish error: " + resp.message());
+                    return;
+                }
+
+                JSONObject data = new JSONObject(resp.body().string())
+                        .getJSONObject("data");
+                float avgSpeed = (float) data.getDouble("velocity");
+                float pts      = (float) data.getDouble("points");
+                float kcal     = (float) data.getDouble("kcal");
+
+                Intent br = new Intent(ACTION_EXERCISE_END)
+                        .putExtra(EXTRA_SESSION_POINTS, pts)
+                        .putExtra(EXTRA_AVG_SPEED, avgSpeed)
+                        .putExtra(EXTRA_KCAL, kcal)
+                        .putExtra(EXTRA_DURATION_MILLIS, duration);
+                LocalBroadcastManager.getInstance(this)
+                        .sendBroadcast(br);
+            } catch (Exception e) {
+                Log.e(TAG, "finish API fail", e);
+            } finally {
+                // UI 토스트·노티·저장·종료는 이곳에서 한 번만
+                servicePrefs.edit().putBoolean(KEY_RUNNING, false).apply();
+                savePoints(dailyPoints);
+                getSystemService(NotificationManager.class)
+                        .cancel(NOTIFICATION_ID);
+                stopSelf();
+            }
+        }).start();
 
         updateNotification("운동 기록 종료", "총 포인트: " + dailyPoints);
 
@@ -364,13 +469,5 @@ public class ExerciseService extends Service implements SensorEventListener {
         intent.putExtra(EXTRA_POINTS, points);
         LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
         Log.d("ExerciseService", "Step update broadcast sent: " + points);
-    }
-
-    private void sendExerciseEndBroadcast(float lastSpeedKmh, long durationMillis) {
-        Intent intent = new Intent(ACTION_EXERCISE_END);
-        intent.putExtra(EXTRA_LAST_SPEED_KMH, lastSpeedKmh);
-        intent.putExtra(EXTRA_DURATION_MILLIS, durationMillis);
-        LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
-        Log.d("ExerciseService", "Exercise end broadcast sent. Speed: " + lastSpeedKmh + " km/h, Duration: " + durationMillis + " ms");
     }
 }

@@ -27,7 +27,9 @@ import java.util.concurrent.Executors;
 public class EmailAuthRequestTask {
     private static final String TAG = "EmailAuthRequest";
 
-    private static final String BASE_URL = "http://10.0.2.2:3000";
+//    private static final String BASE_URL = "http://10.0.2.2:3000";
+    private static final String BASE_URL = "http://10.18.220.184:3000";
+
     private static final String ENDPOINT = "/auth/email";
 
     private static final ExecutorService executor = Executors.newSingleThreadExecutor();
