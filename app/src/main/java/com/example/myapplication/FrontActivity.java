@@ -99,6 +99,8 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
     private static final String KEY_MAP_TYPE = "mapType";
     private static final String MAP_TYPE_GOOGLE = "Google";
     private static final String MAP_TYPE_NAVER = "Naver";
+    private static final String PREFS_SERVICE = "ExerciseServicePrefs";
+    private static final String KEY_RUNNING = "isServiceRunning";
     private SharedPreferences mapPrefs;
 
     private FusedLocationProviderClient fusedLocationClient;
@@ -177,6 +179,7 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
         buttonEndExercise = findViewById(R.id.buttonEndExercise);
         imageViewRabbit = findViewById(R.id.imageViewRabbit);
         textViewStepBubble = findViewById(R.id.textViewStepBubble);
+        updateButtonsByServiceState();
 
         progressBar.setMax(10000);
         maxGoalTextView.setText(String.valueOf(10000));
@@ -250,6 +253,7 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
     @Override
     protected void onResume() {
         super.onResume();
+        updateButtonsByServiceState();
         handler.post(updateTimeRunnable);
 
         LocalBroadcastManager.getInstance(this).registerReceiver(stepUpdateReceiver,
@@ -346,6 +350,22 @@ public class FrontActivity extends AppCompatActivity implements com.google.andro
         textViewStepBubble.setTranslationX(clampedBubbleTranslationX);
 
         Log.d("RabbitPosition", "Progress: " + currentProgress + ", Width: " + progressBarWidth + ", RabbitWidth: " + rabbitWidth + ", BubbleWidth: " + bubbleWidth + ", ClampedRabbitX: " + clampedRabbitTranslationX + ", ClampedBubbleX: " + clampedBubbleTranslationX);
+    }
+
+    private void updateButtonsByServiceState() {
+        SharedPreferences servicePrefs =
+                getSharedPreferences(PREFS_SERVICE, Context.MODE_PRIVATE);
+        boolean isRunning = servicePrefs.getBoolean(KEY_RUNNING, false);
+
+        if (isRunning) {
+            buttonStartExercise.setVisibility(View.GONE);
+            buttonEndExercise.setVisibility(View.VISIBLE);
+            textViewStepBubble.setText("운동 중…");
+        } else {
+            buttonStartExercise.setVisibility(View.VISIBLE);
+            buttonEndExercise.setVisibility(View.GONE);
+            textViewStepBubble.setText("준비 중");
+        }
     }
 
     private void startExercise() {

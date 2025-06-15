@@ -39,12 +39,16 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 
+import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+
+import okhttp3.Call;
+import okhttp3.Response;
 
 public class ExerciseService extends Service implements SensorEventListener {
 
@@ -57,6 +61,10 @@ public class ExerciseService extends Service implements SensorEventListener {
     public static final String ACTION_EXERCISE_END = "com.example.myapplication.action.EXERCISE_END";
     public static final String EXTRA_LAST_SPEED_KMH = "extra_last_speed_kmh";
     public static final String EXTRA_DURATION_MILLIS = "extra_duration_millis";
+    private static final String PREFS_SERVICE = "ExerciseServicePrefs";
+    private static final String KEY_RUNNING = "isServiceRunning";
+    private SharedPreferences servicePrefs;
+
 
     private SensorManager sensorManager;
     private Sensor stepCounterSensor;
@@ -92,6 +100,7 @@ public class ExerciseService extends Service implements SensorEventListener {
             return;
         }
         pointsPrefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        servicePrefs = getSharedPreferences(PREFS_SERVICE, Context.MODE_PRIVATE);
 
         checkAndResetDailySteps(); // 서비스 시작 시 날짜 확인 및 걸음 수 초기화
 
@@ -195,6 +204,7 @@ public class ExerciseService extends Service implements SensorEventListener {
         }
 
         startLocationUpdates();
+        servicePrefs.edit().putBoolean(KEY_RUNNING, true).apply();
         updateNotification("운동 기록 중...", "포인트: " + dailyPoints);
     }
 
@@ -205,6 +215,7 @@ public class ExerciseService extends Service implements SensorEventListener {
             Log.d("ExerciseService", "Step counter listener unregistered");
         }
         stopLocationUpdates();
+        servicePrefs.edit().putBoolean(KEY_RUNNING, false).apply();
 
         long endTimeMillis = System.currentTimeMillis();
         long durationMillis = endTimeMillis - startTimeMillis;
@@ -255,10 +266,11 @@ public class ExerciseService extends Service implements SensorEventListener {
                             float speedMps = distance / (timeDiffMillis / 1000f);
                             float speedKmh = speedMps * 3.6f;
                             lastCalculatedSpeedKmh = speedKmh;
-                            SendExerciseTraceTask.sendRequest(mFirebaseUser.getUid(), speedKmh, currentTime, currentTime - lastStepTime, new SendExerciseTraceTask.Callback() {
+                            SendExerciseTraceTask.sendRequest(mFirebaseUser.getUid(), speedKmh, currentTime, timeDiffMillis, new SendExerciseTraceTask.Callback() {
                                 @Override
                                 public void onSuccess(int httpCode, String responseBody) {
                                     Log.d("ExerciseService", "Exercise trace sent successfully");
+                                    Log.d("ExerciseService", responseBody);
                                     HashMap<String, Object> body = JsonUtils.jsonToMap(responseBody);
                                     if (body == null) {
                                         Toast.makeText(ExerciseService.this, "Exercise trace sent successfully", Toast.LENGTH_LONG).show();
@@ -269,12 +281,12 @@ public class ExerciseService extends Service implements SensorEventListener {
                                     Object p = trace.get("points");
                                     float points;
                                     if (p instanceof Number) {
+                                        Log.d("ExerciseService", "points 타입: " + p.getClass().getSimpleName());
                                         points = ((Number)p).floatValue();
                                     } else if (p instanceof String) {
-                                        // 숫자 문자열이라면 파싱
+                                        Log.d("ExerciseService", "points 타입: " + p.getClass().getSimpleName());
                                         points = Float.parseFloat((String)p);
                                     } else {
-                                        // 예외 처리나 기본값
                                         throw new IllegalStateException("points 타입이 Number/String이 아닙니다: " + p);
                                     }
                                     dailyPoints += points;
