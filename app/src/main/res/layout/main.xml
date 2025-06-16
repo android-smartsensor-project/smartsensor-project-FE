@@ -40,14 +40,28 @@
                 android:textSize="20sp"
                 android:layout_marginStart="8dp" />
 
+            <!-- 남은 공간 채우기 -->
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1"/>
+
+            <!-- 프로필 아이콘 (고정 크기) -->
+            <ImageView
+                android:id="@+id/profileIcon"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@drawable/ic_profile"
+                android:contentDescription="프로필"
+                android:layout_marginEnd="8dp"/>
+
+            <!-- 캐시 아이콘 (고정 크기) -->
             <ImageView
                 android:id="@+id/cashIcon"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
                 android:src="@drawable/box"
-                android:layout_marginStart="140dp"
-                android:adjustViewBounds="true"
-                android:scaleType="fitCenter"/>
+                android:contentDescription="캐시" />
 
         </LinearLayout>
 

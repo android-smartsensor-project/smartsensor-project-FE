@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp"
+    android:fillViewport="true"
+    android:background="#FFFFFF">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!-- 홈으로 이동 버튼 -->
+        <ImageButton
+            android:id="@+id/btnHome"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:src="@drawable/ic_home"
+            android:contentDescription="홈으로 이동"
+            android:background="?attr/selectableItemBackgroundBorderless" />
+
+        <!-- 유저 프로필 정보 -->
+        <TextView
+            android:id="@+id/tvName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="이름:"
+            android:textSize="18sp"
+            android:layout_marginTop="16dp"
+            android:textStyle="bold"/>
+
+        <TextView
+            android:id="@+id/tvEmail"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="이메일:"
+            android:textSize="18sp"
+            android:layout_marginTop="12dp"
+            android:textStyle="bold"/>
+
+        <TextView
+            android:id="@+id/tvBirthdate"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="생년월일:"
+            android:textSize="18sp"
+            android:layout_marginTop="12dp"
+            android:textStyle="bold"/>
+
+        <TextView
+            android:id="@+id/tvGender"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="성별:"
+            android:textSize="18sp"
+            android:layout_marginTop="12dp"
+            android:textStyle="bold"/>
+
+        <TextView
+            android:id="@+id/tvDailyPoints"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="일일 포인트:"
+            android:textSize="18sp"
+            android:layout_marginTop="12dp"
+            android:textStyle="bold"/>
+
+        <TextView
+            android:id="@+id/tvMonthPoints"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="월 포인트:"
+            android:textSize="18sp"
+            android:layout_marginTop="12dp"
+            android:textStyle="bold"
+            />
+
+        <TextView
+            android:id="@+id/tvAccumulatedCash"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="캐쉬:"
+            android:textSize="18sp"
+            android:layout_marginTop="12dp"
+            android:textStyle="bold"/>
+
+        <!-- 설명 텍스트뷰 (3줄 중앙 정렬) -->
+        <TextView
+            android:id="@+id/tvProfileDescription"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="{name} 님의 나이와 성별을 고려하여\n{minGetPoint}km/h 이상부터 1포인트 이상 적립,\n{maxGetPoint}km/h 까지 최대 2포인트를\n 적립할 수 있습니다."
+            android:textSize="20sp"
+            android:textAlignment="center"
+            android:gravity="center" />
+
+        <!-- 로그아웃 & 회원탈퇴 버튼 그룹 (세로 배치, 회원탈퇴 작게) -->
+        <LinearLayout
+            android:id="@+id/groupLogout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="24dp"
+            android:gravity="center">
+
+            <!-- 로그아웃 버튼: 메인 헤더 색상 적용 -->
+            <Button
+                android:id="@+id/btnLogout"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:backgroundTint="#FFEB3B"
+                android:text="로그아웃"
+                android:textColor="#3f3f3f"
+                android:textSize="16sp" />
+
+            <!-- 회원탈퇴 버튼: 배경없음, 밑줄, 회색 텍스트 -->
+            <TextView
+                android:id="@+id/btnWithdraw"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:layout_gravity="center_horizontal"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:text="회원탈퇴"
+                android:textColor="#888888"
+                android:textSize="16sp" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</ScrollView>

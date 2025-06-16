@@ -48,6 +48,7 @@ public class MainActivity extends AppCompatActivity {
     private ArrayList<BarEntry> timeEntriesExample;
     private ArrayList<BarEntry> calorieEntriesExample;
 
+    private ImageView profileIconImageView;
     private ImageView cashIconImageView; // ✨ 이 줄이 꼭 있어야 해!
 
     @Override
@@ -128,7 +129,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-
         recyclerViewActivities.setLayoutManager(new LinearLayoutManager(this));
         activityItems = new ArrayList<>();
         activityAdapter = new ItemActivity(activityItems);
@@ -138,8 +138,17 @@ public class MainActivity extends AppCompatActivity {
         activityAdapter.addItem(new ItemActivity.Item("달리기", "00:10:00 | 1.5 km", "오후 4:00"));
         activityAdapter.addItem(new ItemActivity.Item("자전거", "00:30:00 | 5 km", "오후 5:00"));
 
-        cashIconImageView = findViewById(R.id.cashIcon);
+        profileIconImageView = findViewById(R.id.profileIcon);
+        profileIconImageView.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                // ProfileActivity 로 이동
+                Intent intent = new Intent(MainActivity.this, ProfileActivity.class);
+                startActivity(intent);
+            }
+        });
 
+        cashIconImageView = findViewById(R.id.cashIcon);
         cashIconImageView.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
