@@ -102,10 +102,6 @@ public class ExerciseService extends Service implements SensorEventListener {
     private long startTimeMillis = 0;
     private float lastCalculatedSpeedKmh = 0f;
 
-    private SharedPreferences pointsPrefs;
-    private static final String PREFS_NAME = "PointsPrefs";
-    private static final String KEY_POINTS = "points";
-    private static final String KEY_LAST_RESET_DATE = "lastResetDate";
     private static final FirebaseAuth mFirebaseAuth = FirebaseAuth.getInstance();
     private static final FirebaseUser mFirebaseUser = mFirebaseAuth.getCurrentUser();
 
@@ -117,10 +113,7 @@ public class ExerciseService extends Service implements SensorEventListener {
             stopSelf();
             return;
         }
-        pointsPrefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         servicePrefs = getSharedPreferences(PREFS_SERVICE, Context.MODE_PRIVATE);
-
-        checkAndResetDailySteps(); // 서비스 시작 시 날짜 확인 및 걸음 수 초기화
 
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         if (sensorManager != null) {
@@ -167,7 +160,26 @@ public class ExerciseService extends Service implements SensorEventListener {
             }
         }
 
-        sendStepUpdateBroadcast(dailyPoints); // 서비스 시작 시 현재 포인트 액티비티로 전송
+        new Thread(() -> {
+            // ① 서버에서 오늘 포인트 가져오기
+            Request req = new Request.Builder()
+                    .url(BASE_URL + "/exercise/points/" + mFirebaseUser.getUid())
+                    .get()
+                    .build();
+            try (Response resp = httpClient.newCall(req).execute()) {
+                if (resp.isSuccessful()) {
+                    JSONObject root = new JSONObject(resp.body().string());
+                    if (root.optInt("statusCode", resp.code()) == 200) {
+                        dailyPoints = (float) root
+                                .getJSONObject("data")
+                                .getDouble("dailyPoints");
+                    }
+                }
+            } catch (Exception e) { /* … */ }
+
+            // ② 그 값을 브로드캐스트
+            sendStepUpdateBroadcast(dailyPoints);
+        }).start();
 
         return START_STICKY;
     }
@@ -181,27 +193,6 @@ public class ExerciseService extends Service implements SensorEventListener {
     @Override
     public IBinder onBind(Intent intent) {
         return null;
-    }
-
-    private void checkAndResetDailySteps() {
-        String lastResetDate = pointsPrefs.getString(KEY_LAST_RESET_DATE, "");
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd", Locale.KOREAN);
-        String todayDate = sdf.format(new Date());
-
-        if (!todayDate.equals(lastResetDate)) {
-            dailyPoints = 0;
-            savePoints(0);
-            pointsPrefs.edit().putString(KEY_LAST_RESET_DATE, todayDate).apply();
-            Log.d("ExerciseService", "Daily steps reset for " + todayDate);
-        } else {
-            dailyPoints = pointsPrefs.getFloat(KEY_POINTS, 0);
-            Log.d("ExerciseService", "Loaded steps for today (" + todayDate + "): " + dailyPoints);
-        }
-    }
-
-    private void savePoints(float points) {
-        pointsPrefs.edit().putFloat(KEY_POINTS, points).apply();
-        Log.d("ExerciseService", "Step count saved: " + points);
     }
 
     /** 운동 시작 API를 동기 호출하고, HTTP 상태에 따라 로그/서비스 중단 처리 */
@@ -320,7 +311,6 @@ public class ExerciseService extends Service implements SensorEventListener {
             } finally {
                 // UI 토스트·노티·저장·종료는 이곳에서 한 번만
                 servicePrefs.edit().putBoolean(KEY_RUNNING, false).apply();
-                savePoints(dailyPoints);
                 sendStepUpdateBroadcast(dailyPoints);
                 getSystemService(NotificationManager.class)
                         .cancel(NOTIFICATION_ID);
@@ -336,7 +326,6 @@ public class ExerciseService extends Service implements SensorEventListener {
         lastCalculatedSpeedKmh = 0f;
         startTimeMillis = 0;
 
-        savePoints(dailyPoints); // 운동 종료 시 걸음 수 저장
         manager.cancel(NOTIFICATION_ID);
     }
 

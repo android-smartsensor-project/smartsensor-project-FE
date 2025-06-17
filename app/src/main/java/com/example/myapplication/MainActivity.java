@@ -172,7 +172,7 @@ public class MainActivity extends AppCompatActivity {
                             String key = keys.next();  // ex) "161718193"
                             JSONObject rec = dataObj.getJSONObject(key);
                             double velocity = rec.getDouble("velocity");
-                            int    points   = rec.getInt("points");
+                            double points   = rec.getDouble("points");
                             double kcal     = rec.getDouble("kcal");
                             long   interval = rec.getLong("interval");
 
@@ -307,7 +307,7 @@ public class MainActivity extends AppCompatActivity {
                 // 1) 속도 라벨
                 String speedLabel = String.format("%.1f km/h", r.velocity);
                 // 2) 포인트 | 칼로리
-                String detail = String.format("%d포인트 | %.1f kcal", r.points, r.kcal);
+                String detail = String.format("%.2f포인트 | %.1f kcal", r.points, r.kcal);
                 // 3) 시간 ("HH:MM:SS")
                 String t = r.key.substring(0,2) + ":" +
                         r.key.substring(2,4) + ":" +
@@ -329,10 +329,10 @@ public class MainActivity extends AppCompatActivity {
     private static class Record {
         String  key;
         double  velocity;
-        int     points;
+        double  points;
         double  kcal;
         long    interval;
-        Record(String key,double v,int p,double k,long i){
+        Record(String key, double v, double p, double k, long i){
             this.key=key; velocity=v; points=p; kcal=k; interval=i;
         }
     }
