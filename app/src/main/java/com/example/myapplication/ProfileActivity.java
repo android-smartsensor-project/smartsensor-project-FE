@@ -39,7 +39,7 @@ public class ProfileActivity extends AppCompatActivity {
     private AlertDialog loadingDialog;
     private OkHttpClient client;
     private String uid;
-    private static final String BASE_URL = "http://10.0.2.2:3000"; // TODO: 실제 서버 URL로 변경
+    private static final String BASE_URL = "http://10.18.220.184:3000"; // TODO: 실제 서버 URL로 변경
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

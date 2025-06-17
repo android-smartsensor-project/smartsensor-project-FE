@@ -113,7 +113,7 @@ public class SignUp3Activity extends AppCompatActivity {
                                 FirebaseUser user = mAuth.getCurrentUser();
                                 UserAccount userInfo = new UserAccount();
                                 userInfo.setIdToken(user.getUid());
-                                userInfo.setEmailId(email);
+                                userInfo.setEmail(email);
                                 userInfo.setPassword(password);
                                 userInfo.setName(name);
                                 userInfo.setBirth(birth);

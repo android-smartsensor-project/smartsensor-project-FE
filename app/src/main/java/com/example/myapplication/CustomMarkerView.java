@@ -24,29 +24,45 @@ public class CustomMarkerView extends MarkerView {
 
     @Override
     public void refreshContent(Entry e, Highlight highlight) {
-        int hour = (int) e.getX();
-        int activityValue = (int) e.getY();
+        int startHour = (int) e.getX();
+        int endHour   = (startHour + 1) % 24;                                       // ▶ 수정
+        String timeRange = String.format("%d시~%d시", startHour, endHour);
 
-        String timeRange = hour + "시 ~ " + (hour + 1) + "시";
+        // 2) 실제 값 가져오기 (float 으로)
+        float val = e.getY();                                                        // ▶ 수정
 
-        String activityInfo;
-        if ("걸음 수".equals(activityLabel)) {
-            activityInfo = activityValue + " km/s";
-        } else if ("활동 시간".equals(activityLabel)) {
-            activityInfo = activityValue + " 분 활동";
-        } else if ("활동 칼로리".equals(activityLabel)) {
-            activityInfo = activityValue + " 칼로리 소모";
-        } else {
-            activityInfo = activityLabel + ": " + activityValue;
+        // 3) activityLabel 에 따라 단위와 포맷 분기
+        String infoText;
+        switch (activityLabel) {
+            case "평균 속도":                                                       // ▶ 수정: MainActivity 에서 설정한 Label 과 일치시킵니다
+                // 소수점 한 자리까지 km/h 로
+                infoText = String.format("%.1f km/h", val);                         // ▶ 수정
+                break;
+            case "총 활동 시간":                                                   // ▶ 수정
+                if (val < 1f) {
+                    float seconds = val * 60f;
+                    infoText = String.format("%.2f초 활동", seconds);
+                } else {
+                    infoText = String.format("%d분 활동", Math.round(val));
+                }
+                break;
+            case "총 칼로리":                                                      // ▶ 수정
+                // 정수 kcal 소모
+                infoText = String.format("%dkcal 소모", Math.round(val));         // ▶ 수정
+                break;
+            default:
+                // 혹시 다른 Label 이 들어오면 원래 텍스트로
+                infoText = String.format("%s: %.1f", activityLabel, val);
         }
 
-        tvContent.setText(timeRange + "\n" + activityInfo);
+        // 4) 최종 문자열
+        tvContent.setText(timeRange + "\n" + infoText);
 
         super.refreshContent(e, highlight);
     }
 
     @Override
     public MPPointF getOffset() {
-        return MPPointF.getInstance(-(getWidth() / 2), -getHeight());
+        return MPPointF.getInstance(-(getWidth() / 2f), -getHeight());
     }
 }

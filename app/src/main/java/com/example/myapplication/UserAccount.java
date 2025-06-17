@@ -6,7 +6,7 @@ public class UserAccount {
 
     // 2) 저장할 필드 선언 (private 권장)
     private String idToken;
-    private String emailId;
+    private String email;
     private String password;
     private String name;
     private String phone;
@@ -22,11 +22,11 @@ public class UserAccount {
         this.idToken = idToken;
     }
 
-    public String getEmailId() {
-        return this.emailId;
+    public String getEmail() {
+        return this.email;
     }
-    public void setEmailId(String emailId) {
-        this.emailId = emailId;
+    public void setEmail(String email) {
+        this.email = email;
     }
 
     public String getPassword() {
